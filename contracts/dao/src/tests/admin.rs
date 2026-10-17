@@ -27,6 +27,26 @@ fn initialize_rejects_duplicate_admins() {
 }
 
 #[test]
+fn initialize_rejects_invalid_scalar_parameters() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let token_admin = Address::generate(&env);
+    let token = env.register_stellar_asset_contract_v2(token_admin).address();
+    let contract = env.register(OurDao, ());
+    let client = OurDaoClient::new(&env, &contract);
+    let admin = Address::generate(&env);
+    let mut admins = Vec::new(&env);
+    admins.push_back(admin);
+
+    assert_eq!(client.try_initialize(&admins, &0, &FEE, &token, &policy()), Err(Ok(Error::InvalidThreshold)));
+    assert_eq!(client.try_initialize(&admins, &10_001, &FEE, &token, &policy()), Err(Ok(Error::InvalidThreshold)));
+    assert_eq!(client.try_initialize(&admins, &5_100, &0, &token, &policy()), Err(Ok(Error::InvalidAmount)));
+    let mut invalid_policy = policy();
+    invalid_policy.max_loan_duration = 0;
+    assert_eq!(client.try_initialize(&admins, &5_100, &FEE, &token, &invalid_policy), Err(Ok(Error::InvalidLoanPolicy)));
+}
+
+#[test]
 fn pause_blocks_all_mutating_entrypoints() {
     // This test explicitly checks every mutating entrypoint to ensure pause()
     // prevents state changes. Every public entrypoint that mutates contract state
@@ -299,6 +319,42 @@ fn validate_policy_rejects_quorum_bps_above_basis_points() {
     let s = setup(1);
     let res = s.client.try_propose_policy_update(&s.admin, &p);
     assert_eq!(res, Err(Ok(Error::InvalidLoanPolicy)));
+}
+
+/// Every bound enforced by `admin::validate_policy` is exercised here. This
+/// keeps policy validation from silently regressing when a new field is added
+/// or an existing comparison is changed.
+#[test]
+fn propose_policy_update_rejects_every_invalid_bound() {
+    let cases: [fn(&mut crate::types::LoanPolicy); 18] = [
+            |p| p.membership_contribution = 0,
+            |p| p.max_loan_duration = 0,
+            |p| p.min_interest_rate = 10_001,
+            |p| p.max_interest_rate = 10_001,
+            |p| { p.min_interest_rate = p.max_interest_rate + 1; },
+            |p| p.max_loan_to_treasury_ratio = 0,
+            |p| p.max_loan_to_treasury_ratio = 10_001,
+            |p| p.default_penalty_bps = 10_001,
+            |p| p.editing_period = 0,
+            |p| p.voting_period = 0,
+            |p| p.editing_period = 30 * 24 * 60 * 60 + 1,
+            |p| p.voting_period = 30 * 24 * 60 * 60 + 1,
+            |p| p.min_membership_duration = 30 * 24 * 60 * 60 + 1,
+            |p| p.cooldown_period = 30 * 24 * 60 * 60 + 1,
+            |p| p.default_grace_period = 30 * 24 * 60 * 60 + 1,
+            |p| p.treasury_threshold = 0,
+            |p| p.treasury_threshold = 10_001,
+            |p| p.quorum_bps = 10_001,
+    ];
+    for mutate in cases {
+        let s = setup(1);
+        let mut invalid = policy();
+        mutate(&mut invalid);
+        assert_eq!(
+            s.client.try_propose_policy_update(&s.admin, &invalid),
+            Err(Ok(Error::InvalidLoanPolicy))
+        );
+    }
 }
 
 // Issue #192: Timelock delay for administrative policy changes
