@@ -21,6 +21,7 @@ Closes #<!-- issue number -->
 - [ ] `cargo fmt --all -- --check` passes
 - [ ] `cargo test --locked` passes
 - [ ] `cargo build --locked --target wasm32v1-none --release` succeeds
+- [ ] This PR addresses a single issue only
 
 ## Contract checklist
 
@@ -31,6 +32,7 @@ Closes #<!-- issue number -->
 - [ ] New storage reads/writes extend TTL, consistent with existing modules
 - [ ] Any change to `require_auth` behavior is explained below
 - [ ] No unrelated dependency bumps; `Cargo.lock` changes are intentional
+- [ ] Changes to ABI or events: README and schema files updated to match
 
 ### Authorization changes
 

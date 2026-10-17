@@ -79,6 +79,21 @@ jobs:
       - name: Check licenses, bans, advisories, and sources
         run: cargo deny check advisories licenses bans sources
 
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MSRV toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          # Keep in sync with rust-version in Cargo.toml.
+          toolchain: "1.84"
+          targets: wasm32v1-none
+
+      - name: Check on MSRV
+        run: cargo check --locked --all-targets
+
   reproducible-build:
     runs-on: ubuntu-latest
     permissions:

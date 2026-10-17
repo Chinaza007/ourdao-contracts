@@ -17,6 +17,9 @@ All notable changes to `ourdao-contracts` are documented here. The format follow
 - Property tests for exit-share, interest and staking-weight math.
 - `util::isqrt`: an overflow-free integer square root over the whole `i128` range, backing the quadratic staking curve (#182).
 - CI: `cargo clippy`, `cargo audit` and a `cargo-llvm-cov` coverage floor of 95% (#62).
+- CI: MSRV job tests minimum supported Rust version (1.84) across all targets (#381).
+- CI: markdown link checker validates all `.md` files for broken references (#383).
+- PR template: checkboxes for "single issue only" and "ABI/event changes" (#382).
 
 ### Changed
 - `Member.join_ledger` renamed to `join_time` (#55).
