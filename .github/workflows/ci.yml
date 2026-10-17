@@ -54,7 +54,18 @@ jobs:
       # 2.2.0) authoritative, so the resolver can't float onto an incompatible
       # transitive release.
       - name: Test & Coverage
-        run: cargo llvm-cov --locked --all-targets --fail-under-lines 95
+        run: cargo llvm-cov --locked --all-targets --html --fail-under-lines 95
+
+      # Uploaded even when the coverage floor fails, so the uncovered lines
+      # stay visible on the failing run.
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: target/llvm-cov/html
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Build wasm (release)
         if: always()
