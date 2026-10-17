@@ -17,6 +17,7 @@ All notable changes to `ourdao-contracts` are documented here. The format follow
 - Property tests for exit-share, interest and staking-weight math.
 - `util::isqrt`: an overflow-free integer square root over the whole `i128` range, backing the quadratic staking curve (#182).
 - CI: `cargo clippy`, `cargo audit` and a `cargo-llvm-cov` coverage floor of 95% (#62).
+- CI: the HTML coverage report is uploaded as a `coverage-report` artifact on every run, including runs that miss the floor (#380).
 
 ### Changed
 - `Member.join_ledger` renamed to `join_time` (#55).

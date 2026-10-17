@@ -135,6 +135,19 @@ All entrypoints are on the `OurDao` contract (`lib.rs`). Errors are the numeric 
 |---|---|
 | `stake(member, amount)` / `unstake(member, amount)` | Boosts voting weight quadratically (`1 + isqrt(stake / 100)`, capped at 6); kept separate from lendable treasury. |
 
+**Staking weight table.** Voting weight is `1 + min(isqrt(stake / 100), 5)`, as computed by `util::voting_weight`. Each bonus step costs more than the one before it, so the boost grows slowly with stake:
+
+| Staked amount | Bonus votes | Voting weight |
+|---:|---:|---:|
+| 0 – 99 | 0 | 1 |
+| 100 – 399 | 1 | 2 |
+| 400 – 899 | 2 | 3 |
+| 900 – 1,599 | 3 | 4 |
+| 1,600 – 2,499 | 4 | 5 |
+| 2,500 and above | 5 (cap) | 6 |
+
+The *k*-th bonus vote starts at `k² × 100` staked tokens, so the thresholds are 100, 400, 900, 1,600, and 2,500. The table shows a member's own stake. A member's weight also includes the base vote and boost of anyone who has delegated to them.
+
 **Name registry**
 
 | Method | Description |

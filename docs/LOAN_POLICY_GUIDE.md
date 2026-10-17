@@ -183,6 +183,80 @@ spread can underprice concentration risk.
 
 ---
 
+## Worked interest-rate examples
+
+These examples apply the formula above to three loan sizes against the same
+treasury. They use the policy from the small-DAO example below, with
+`min_interest_rate = 500` and `max_interest_rate = 2_000` (spread `s = 1_500`),
+and a treasury balance `T = 1_000_000` stroops.
+
+Each row follows the same steps:
+
+1. `loan_ratio = A * 10_000 / 1_000_000`
+2. `rate = 500 + loan_ratio * 1_500 / 10_000`, capped at `2_000`
+3. `interest = A * rate / 10_000`
+4. `total_repayment = A + interest`
+
+### Example A: small loan (5% of treasury)
+
+| Step | Value |
+|---|---|
+| Requested amount `A` | 50,000 |
+| `loan_ratio` | 500 bp (5%) |
+| Added rate `500 * 1_500 / 10_000` | 75 bp |
+| Quoted rate `500 + 75` | **575 bp (5.75%)** |
+| Interest `50_000 * 575 / 10_000` | 2,875 |
+| `total_repayment` | **52,875** |
+
+### Example B: typical loan (20% of treasury)
+
+| Step | Value |
+|---|---|
+| Requested amount `A` | 200,000 |
+| `loan_ratio` | 2,000 bp (20%) |
+| Added rate `2_000 * 1_500 / 10_000` | 300 bp |
+| Quoted rate `500 + 300` | **800 bp (8.00%)** |
+| Interest `200_000 * 800 / 10_000` | 16,000 |
+| `total_repayment` | **216,000** |
+
+This loan sits exactly at the `max_loan_to_treasury_ratio` in the small-DAO
+profile, so it is the largest loan that profile allows.
+
+### Example C: large loan (60% of treasury)
+
+| Step | Value |
+|---|---|
+| Requested amount `A` | 600,000 |
+| `loan_ratio` | 6,000 bp (60%) |
+| Added rate `6_000 * 1_500 / 10_000` | 900 bp |
+| Quoted rate `500 + 900` | **1,400 bp (14.00%)** |
+| Interest `600_000 * 1_400 / 10_000` | 84,000 |
+| `total_repayment` | **684,000** |
+
+This loan is well above the small-DAO ratio cap of 20%. It is included to show
+how the rate rises with concentration. Under the small-DAO profile it exceeds
+the 20% `max_loan_to_treasury_ratio` and would be refused with
+`ExceedsTreasuryRatio`.
+
+### Reading the three examples together
+
+| Loan | Share of treasury | Rate | Interest | Total repaid |
+|---:|---:|---:|---:|---:|
+| 50,000 | 5% | 5.75% | 2,875 | 52,875 |
+| 200,000 | 20% | 8.00% | 16,000 | 216,000 |
+| 600,000 | 60% | 14.00% | 84,000 | 684,000 |
+
+The rate rises by 225 bp from A to B and by 600 bp from B to C. Interest rises
+faster than the loan size because the rate itself rises with concentration.
+Governance should check that the rate at the maximum permitted ratio is high
+enough to compensate for the concentration risk it allows.
+
+To reproduce these numbers on-chain, call `calculate_loan_terms(amount)` with a
+treasury balance of `1_000_000` and the policy above. The expected
+`interest_rate` and `total_repayment` values must match the tables.
+
+---
+
 ## Default penalty mechanics
 
 After `due_time + default_grace_period`, anyone may call
