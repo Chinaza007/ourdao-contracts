@@ -435,6 +435,8 @@ fn policy_update_cancel_by_admin() {
 }
 
 #[test]
+// Regression guard for #372: a release must expose the package version it was
+// built from, rather than a separately maintained contract constant.
 fn get_version_returns_cargo_pkg_version() {
     let env = Env::default();
     let contract_id = env.register(OurDao, ());
