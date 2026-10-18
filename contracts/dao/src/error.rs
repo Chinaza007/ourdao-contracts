@@ -76,4 +76,6 @@ pub enum Error {
     /// Invalid delegation target (e.g. self-delegation) (#188).
     InvalidDelegation = 79,
     InvalidProposal = 80,
+    AlreadyPauser = 81,
+    NotPauser = 82,
 }

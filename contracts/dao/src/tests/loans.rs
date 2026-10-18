@@ -714,6 +714,8 @@ fn voting_open_one_second_before_deadline() {
     s.client.vote_on_loan_proposal(&voter, &pid, &true);
     let prop = s.client.get_loan_proposal(&pid).unwrap();
     assert!(prop.for_votes > 0, "vote should have been recorded");
+}
+
 // Issue #171: Reject zero-amount loan proposals
 #[test]
 fn zero_amount_loan_request_rejected() {
@@ -725,6 +727,8 @@ fn zero_amount_loan_request_rejected() {
 
     let err_neg = s.client.try_request_loan(&borrower, &-100, &None);
     assert_eq!(err_neg, Err(Ok(Error::InvalidAmount)));
+}
+
 // ==================== issue #190: member loan stats view ====================
 #[test]
 fn member_loan_stats_track_lifecycle() {

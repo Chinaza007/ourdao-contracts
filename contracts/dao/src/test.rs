@@ -9,7 +9,6 @@ use soroban_sdk::{token, Address, Bytes, BytesN, Env, String, Vec};
 
 use crate::privacy::compute_commitment;
 use crate::storage::ProposalKind;
-use crate::storage::TokenWhitelist;
 use crate::admin::TIMELOCK_DURATION;
 use crate::types::{LoanPolicy, LoanStatus, MemberStatus, ProposalPhase, ProposalStatus};
 use crate::{Error, OurDao, OurDaoClient};
@@ -219,7 +218,6 @@ struct Setup<'a> {
 }
 
 fn policy() -> LoanPolicy {
-    // placeholder
     LoanPolicy {
         min_membership_duration: 0,
         membership_contribution: FEE,

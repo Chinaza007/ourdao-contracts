@@ -27,6 +27,7 @@ pub enum DataKey {
     Token,
     Policy,
     Paused,
+    Pauser,
     Members,
     TotalMembers,
     ActiveMembers,
