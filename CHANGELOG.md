@@ -13,6 +13,7 @@ All notable changes to `ourdao-contracts` are documented here. The format follow
 - Added regression coverage that `reveal_vote` removes the stored commitment (#356).
 
 ### Added
+- `make costs` and `tests/costs.rs`: per-entrypoint CPU, memory, ledger I/O, event size and fee estimates measured against the optimized wasm, plus how votes and `exit_dao` scale with membership; `make size` reports raw and optimized wasm size (#357, #358).
 - Multi-token treasury (#236): `request_loan_in_asset`, `repay_loan_in_asset`, `propose_withdrawal_in_asset`, `get_treasury_balance_in_asset`, and the token whitelist (`propose_token_addition` / `execute_token_addition` behind the 48h timelock, `remove_token`, `is_token_whitelisted`, `get_whitelisted_tokens`). The base token is always whitelisted. New append-only error codes 83–87 and events `loan_asst`, `tre_asset`, `tok_prop`, `tok_add`, `tok_rem`.
 - `cancel_loan_proposal` and `cancel_treasury_proposal` entrypoints for the existing #185 cancel logic.
 - CI: a fast `check` job (`cargo check --locked --all-targets`) that `build-and-test` and `reproducible-build` depend on, so a broken merge fails within minutes (#238).
@@ -41,12 +42,15 @@ All notable changes to `ourdao-contracts` are documented here. The format follow
 - Proposal document attachment is restricted to the proposal's own owner, and rejected after the editing phase (#59).
 
 ### Fixed
+- Release wasm size: `crate-type = ["cdylib", "rlib"]` made `cargo build` skip `-C lto`, so `lto = true` never applied to `make build`, CI or `release.yml` builds. With `cdylib` only, plus `DataKey` kept out of the contract spec and a few host-side `Vec` lookups, the release wasm shrinks from 110,988 to 68,329 bytes and the optimized wasm from 85,833 to 58,372, and CPU per call on the optimized wasm drops by 4-14%. No entrypoint, event, error or public type changed (#357).
 - `main` compiles again after the corrupted merge of #216 (#235); `cargo fmt` and `cargo clippy -D warnings` pass again.
 - `total_members` is now decremented on exit, so exit shares no longer underpay (#11).
 - Stake locking and `due_time` on loan approval (#46, #51); reveal period end (#45).
 - CI workflow and formatting violations.
 
 ### Documentation
+- README "Resource costs" table, with the membership ceiling corrected from the measured footprint: `exit_dao` exceeds the SDK's 100-entry mainnet snapshot at 86 members and votes at 90 (#358).
+- ADR-0004 (loan due-date extension proposals) and ADR-0005 (interest discount from member loan history) (#359, #360).
 - Removed the orphaned, never-compiled `src/test.rs`; its four unique tests were ported to `src/tests/` (#237).
 - `SECURITY.md` with a coordinated disclosure policy.
 - `docs/MIGRATION.md`, `docs/INVARIANTS.md`, `docs/LOAN_POLICY_GUIDE.md` and the pause/unpause incident runbook.

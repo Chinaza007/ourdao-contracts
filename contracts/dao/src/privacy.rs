@@ -18,7 +18,7 @@ use crate::util;
 pub fn compute_commitment(env: &Env, support: bool, salt: &BytesN<32>) -> BytesN<32> {
     let mut preimage = Bytes::new(env);
     preimage.push_back(if support { 1 } else { 0 });
-    preimage.append(&Bytes::from_array(env, &salt.to_array()));
+    preimage.append(&Bytes::from(salt.clone()));
     env.crypto().sha256(&preimage).to_bytes()
 }
 

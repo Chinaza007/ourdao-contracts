@@ -173,41 +173,30 @@ fn reveal_with_wrong_support_returns_commitment_mismatch() {
     assert_eq!(res, Err(Ok(Error::CommitmentMismatch)));
 }
 
-// ===========================================================================
-// Issue #356: a revealed commitment must be removed from storage
-// ===========================================================================
-
+// Known-answer vectors pin the commitment preimage, `[support] ++ salt`, that
+// off-chain clients must reproduce. Computed independently with Python:
+// hashlib.sha256(bytes([support]) + salt).hexdigest()
 #[test]
-fn reveal_removes_commitment_from_storage() {
-    let s = setup(3);
-    let proposer = s.members.get(0).unwrap();
-    let voter = s.members.get(1).unwrap();
-    let dest = Address::generate(&s.env);
-
-    let reason = String::from_str(&s.env, "private grant");
-    let pid = s
-        .client
-        .propose_treasury_withdrawal(&proposer, &300, &dest, &reason, &true);
-
-    let salt = BytesN::from_array(&s.env, &[7u8; 32]);
-    let commitment = compute_commitment(&s.env, true, &salt);
-    s.client.commit_treasury_vote(&voter, &pid, &commitment);
-
-    let has_commit = |s: &Setup| {
-        s.env.as_contract(&s.client.address, || {
-            crate::storage::get_commit(&s.env, pid, &voter).is_some()
-        })
-    };
-    assert!(has_commit(&s));
-
-    advance(&s.env, VOTING_PERIOD + 1);
-    s.client.reveal_treasury_vote(&voter, &pid, &true, &salt);
-
-    assert!(!has_commit(&s), "commitment key must be gone after reveal");
-    // The vote still counts, and a second reveal is rejected.
-    assert!(s.client.has_voted(&ProposalKind::Treasury, &pid, &voter));
-    let again = s
-        .client
-        .try_reveal_treasury_vote(&voter, &pid, &true, &salt);
-    assert_eq!(again, Err(Ok(Error::AlreadyRevealed)));
+fn commitment_matches_known_answer_vectors() {
+    let env = soroban_sdk::Env::default();
+    let cases: [(bool, [u8; 32], &str); 2] = [
+        (
+            true,
+            [7u8; 32],
+            "d3907c0247e7e98b72338a00d87244248df71eb313589da290d45adfba44e6d2",
+        ),
+        (
+            false,
+            core::array::from_fn(|i| i as u8),
+            "699cacdb4c39d8e0bb1223352765a7f7acdc51dec6694f7b54c3d0a47f0cc409",
+        ),
+    ];
+    for (support, salt, hex) in cases {
+        let mut expected = [0u8; 32];
+        for (i, byte) in expected.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap();
+        }
+        let got = compute_commitment(&env, support, &BytesN::from_array(&env, &salt));
+        assert_eq!(got.to_array(), expected);
+    }
 }

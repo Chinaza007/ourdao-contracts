@@ -17,9 +17,14 @@ pub enum ProposalKind {
     Treasury,
 }
 
+/// Storage keys. Crate-private on purpose: `#[contracttype]` only writes
+/// `pub` types into the contract spec, and these keys are an internal storage
+/// layout, not part of the callable interface. Keeping them out of the spec
+/// saves ~1.5 KB of wasm (#357). Variants still encode by name on the ledger, so
+/// renaming one orphans every entry already stored under it.
 #[contracttype]
 #[derive(Clone)]
-pub enum DataKey {
+pub(crate) enum DataKey {
     // ---- singletons (instance storage) ----
     Admins,
     Threshold,

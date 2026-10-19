@@ -7,7 +7,9 @@ license = { workspace = true }
 repository = { workspace = true }
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+# cdylib only: with an extra `rlib`, `cargo build` drops `-C lto` for this
+# crate and the release wasm grows by ~40 KB (#357). Unit tests don't need it.
+crate-type = ["cdylib"]
 doctest = false
 
 [features]

@@ -35,6 +35,7 @@ This repository is one of three that make up OurDAO:
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
+- [Resource costs](#resource-costs)
 
 ## What the DAO does
 
@@ -356,22 +357,82 @@ Found a security vulnerability? See [SECURITY.md](./SECURITY.md) — don't open 
 
 MIT
 
-## Resource Costs and Membership Ceiling
+## Resource costs
 
-As measured via SDK budget instrumentation (Issue #138, extended in #354) by `scripts/bench-cost.sh` at DAO sizes 10, 100 and 1000:
+Measured against the optimized release wasm (58,457 bytes) with the SDK's
+invocation metering, in a 10-member DAO. Regenerate with `make costs`
+(source: [`tests/costs.rs`](./contracts/dao/src/tests/costs.rs)).
 
-| Entrypoint | CPU (n=10) | CPU (n=100) | CPU (n=1000) | Scaling |
-|---|---|---|---|---|
-| `request_loan_in_asset` | ~750k | ~1.7M | ~10.9M | O(1) logic (scales with instance storage load) |
-| `repay_loan_in_asset` | ~780k | ~1.5M | ~8.0M | O(1) logic (scales with instance storage load) |
-| `propose_withdrawal_in_asset` | ~680k | ~1.6M | ~10.8M | O(1) logic (scales with instance storage load) |
-| `exit_dao` | ~1.0M | ~2.0M | ~10.5M | O(1) (#353 running total replaces member scan) |
-| `is_admin` | - | - | - | Scales with admin count |
+| Entrypoint | CPU instructions | Memory (KiB) | Entries read | Entries written | Bytes written | Event bytes | Est. fee (stroops) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `register_member` | 1,737,105 | 1,372 | 9 | 6 | 2,676 | 376 | 7,291,448 |
+| `stake` | 1,567,392 | 1,363 | 10 | 6 | 2,348 | 396 | 2,821,539 |
+| `register_name` | 1,148,775 | 1,313 | 6 | 3 | 348 | 136 | 3,742,731 |
+| `add_admin` | 984,100 | 1,305 | 4 | 2 | 1,656 | 112 | 1,443,823 |
+| `propose_policy_update` | 1,000,164 | 1,306 | 4 | 2 | 2,304 | 132 | 3,202,621 |
+| `request_loan` | 1,888,826 | 1,362 | 8 | 3 | 3,032 | 168 | 7,416,978 |
+| `attach_document` | 1,491,392 | 1,320 | 7 | 2 | 224 | 152 | 2,642,299 |
+| `edit_loan_proposal` | 1,567,566 | 1,330 | 9 | 2 | 764 | 172 | 1,396,598 |
+| `vote_on_loan_proposal` | 2,386,168 | 1,417 | 19 | 3 | 908 | 140 | 2,593,677 |
+| `vote_on_loan_proposal` (deciding vote, disburses) | 3,291,980 | 1,480 | 25 | 7 | 2,304 | 540 | 6,492,906 |
+| `repay_loan_partial` | 1,793,716 | 1,394 | 10 | 6 | 3,404 | 504 | 1,579,588 |
+| `repay_loan` | 1,761,672 | 1,369 | 10 | 5 | 1,468 | 384 | 1,370,815 |
+| `claim_rewards` | 1,513,351 | 1,350 | 9 | 4 | 676 | 500 | 1,352,370 |
+| `mark_loan_defaulted` | 1,594,180 | 1,348 | 4 | 3 | 3,344 | 152 | 293,969 |
+| `propose_treasury_withdrawal` | 2,034,857 | 1,394 | 10 | 3 | 3,108 | 156 | 6,689,526 |
+| `vote_on_treasury_proposal` | 2,098,089 | 1,363 | 19 | 3 | 820 | 136 | 2,627,282 |
+| `vote_on_treasury_proposal` (deciding vote, pays out) | 2,671,416 | 1,461 | 24 | 5 | 1,268 | 520 | 3,330,146 |
+| `unstake` | 1,968,115 | 1,406 | 11 | 5 | 3,100 | 396 | 1,377,027 |
+| `exit_dao` | 3,646,895 | 1,500 | 20 | 6 | 3,616 | 376 | 1,399,042 |
+| `get_member` | 853,651 | 1,276 | 3 | 0 | 0 | 0 | 2,135 |
+| `get_member_loan_stats` | 830,372 | 1,275 | 3 | 0 | 0 | 0 | 2,076 |
+| `get_voting_weight` | 1,376,242 | 1,291 | 14 | 0 | 0 | 0 | 3,441 |
+| `calculate_exit_share` | 2,325,631 | 1,332 | 15 | 0 | 0 | 0 | 5,815 |
+| `is_eligible_for_loan` | 956,945 | 1,283 | 3 | 0 | 0 | 0 | 2,393 |
+| `get_treasury_balance` | 986,734 | 1,299 | 4 | 0 | 0 | 0 | 2,467 |
 
-- `exit_dao` is O(1). It previously iterated all members in `total_active_contributions`; the DAO now maintains a running `ActiveContributions` total that is updated on join, exit and default penalty (#353).
-- `request_loan_in_asset`, `repay_loan_in_asset` and `propose_withdrawal_in_asset` (multi-token entrypoints) are covered by the same benchmark and are expected to stay flat as membership grows, subject only to instance storage deserialization.
-- Other entrypoints are O(1) or scale with smaller sets (like active proposals).
+How to read it:
 
-Run the benchmark with `scripts/bench-cost.sh`; it prints one `BENCH <entrypoint> <size> <cpu>` line per measurement.
+- **Fees** use the pubnet fee snapshot built into `soroban-sdk` 26 (1 XLM =
+  10,000,000 stroops) and include rent, which is why calls that create
+  persistent entries (`register_member`, `request_loan`,
+  `propose_treasury_withdrawal`) cost the most: each new entry is prepaid for
+  its 90-day TTL. Treat them as estimates; simulate the transaction against
+  the live network for an exact quote.
+- **Memory** is dominated by instantiating the wasm module (about 1.25 MiB
+  for any call) and does not affect the fee.
+- Views cost nothing on-chain when called through simulation; their row is
+  what they would cost inside a transaction.
+- Not measured: `delegate_vote` currently traps (it calls `require_auth`
+  twice on the delegator), commit/reveal voting (the reveal path fails its
+  own tests on `main`), and the `*_in_asset` variants (#354).
 
-**Membership Ceiling:** with the O(n) scan removed, exit no longer bounds membership. Vote tally paths read `active_members` and the policy/threshold once per call (#355), so cost per vote does not grow with DAO size either.
+### Scaling with membership and the membership ceiling
+
+The member list lives in instance storage, so every call loads it, but only
+a few entrypoints visit each member. Cells are `CPU instructions / ledger
+entries touched` at exactly that many members (`make costs` prints this
+table too):
+
+| Members | `get_total_members` | `register_member` | `vote_on_loan_proposal` | `vote_on_treasury_proposal` | `exit_dao` |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 10 | 766,963 / 2 | 1,722,482 / 15 | 2,215,574 / 21 | 1,950,623 / 21 | 3,286,408 / 25 |
+| 25 | 777,325 / 2 | 1,921,613 / 15 | 3,670,987 / 36 | 2,800,960 / 36 | 5,265,285 / 40 |
+| 50 | 792,756 / 2 | 2,253,660 / 15 | 7,295,789 / 61 | 4,349,551 / 61 | 8,659,901 / 65 |
+| 85 | 814,438 / 2 | 2,703,817 / 15 | 14,873,074 / 96 | 6,761,284 / 96 | 13,786,173 / 100 |
+| 86 | 815,964 / 2 | 2,716,112 / 15 | 15,131,987 / 97 | 6,843,860 / 97 | 13,944,993 / 101 (over) |
+| 89 | 816,942 / 2 | 2,753,297 / 15 | 15,927,542 / 100 | 7,067,432 / 100 | 14,380,177 / 104 (over) |
+| 90 | 818,468 / 2 | 2,765,692 / 15 | 16,198,117 / 101 (over) | 7,143,798 / 101 (over) | 14,513,552 / 105 (over) |
+| 100 | 823,828 / 2 | 2,885,388 / 15 | 19,014,001 / 111 (over) | 7,885,264 / 111 (over) | 16,041,560 / 115 (over) |
+
+CPU stays far below the per-transaction instruction limit; **ledger entries
+are the binding constraint.** A vote touches `members + 11` entries because
+`voting_weight` reads every member's delegation record, and `exit_dao`
+touches `members + 15` because the exit share sums every member's
+contribution. Against the per-transaction footprint of 100 entries in the
+SDK's mainnet snapshot (marked "over"), `exit_dao` fails from **86 members**
+and voting from **90 members**. Testnet allowed 400 entries when this was
+measured (protocol 29, October 2026), which moves the ceilings to 386 and
+390; check current values with `stellar network settings --network <name>`.
+Raising the ceiling needs those scans replaced with running totals kept up
+to date on join, exit, default and delegation.
