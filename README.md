@@ -101,6 +101,8 @@ All entrypoints are on the `OurDao` contract (`lib.rs`). Errors are the numeric 
 | `set_consensus_threshold(caller, threshold)` | Admin-only, basis points. |
 | `set_loan_policy(caller, policy)` | Admin-only. |
 | `pause(caller)` / `unpause(caller)` | Admin-only emergency stop. |
+| `propose_token_addition(caller, token)` / `execute_token_addition(caller, token)` | Admin-only. Whitelists an extra treasury asset after the 48h `TIMELOCK_DURATION`. The base `token` is always whitelisted. |
+| `remove_token(caller, token)` | Admin-only. Blocks new loans/withdrawals in `token`; loans already issued in it stay repayable. The base token can't be removed. |
 
 **Membership**
 
@@ -115,9 +117,12 @@ All entrypoints are on the `OurDao` contract (`lib.rs`). Errors are the numeric 
 | Method | Description |
 |---|---|
 | `request_loan(borrower, amount) -> proposal_id` | Opens a loan proposal (3-day editing window). |
+| `request_loan_in_asset(borrower, amount, asset, metadata_cid) -> proposal_id` | Same as `request_loan`, denominated in a whitelisted `asset` and sized/priced against the treasury held in it. |
 | `edit_loan_proposal(borrower, proposal_id, new_amount)` | Only during the editing window, only the borrower. |
+| `cancel_loan_proposal(borrower, proposal_id)` | Only during the editing window, only the borrower. |
 | `vote_on_loan_proposal(voter, proposal_id, support)` | Auto-approves and disburses at the consensus threshold. |
 | `repay_loan(borrower, loan_id)` | Collects the full outstanding balance in one transaction. |
+| `repay_loan_in_asset(borrower, loan_id, asset)` | `repay_loan` that fails with `AssetMismatch` unless `asset` is the loan's own asset. Interest on a non-base-asset loan stays in the treasury instead of being distributed as yield. |
 | `repay_loan_partial(borrower, loan_id, amount)` | Collects up to `amount` of the outstanding balance. Applies to accrued interest first, then principal; the loan flips to repaid only once the balance reaches exactly zero. |
 | `mark_loan_defaulted(loan_id)` | **Permissionless.** Callable once `due_time + grace_period` has elapsed. |
 | `expire_loan_proposal(proposal_id)` | **Permissionless keeper call.** Persists the expired state for a proposal whose voting window has passed without reaching quorum. No-op on repeat calls. |
@@ -127,6 +132,8 @@ All entrypoints are on the `OurDao` contract (`lib.rs`). Errors are the numeric 
 | Method | Description |
 |---|---|
 | `propose_treasury_withdrawal(proposer, amount, destination, reason, private) -> proposal_id` | `private` routes it through commit-reveal instead of open voting. |
+| `propose_withdrawal_in_asset(proposer, amount, asset, destination, reason, private) -> proposal_id` | Same as `propose_treasury_withdrawal`, paid out in a whitelisted `asset`. (Soroban caps entrypoint names at 32 characters, hence no `treasury_` prefix.) |
+| `cancel_treasury_proposal(proposer, proposal_id)` | Only the proposer, only while pending and within the policy's editing period. |
 | `vote_on_treasury_proposal(voter, proposal_id, support)` | Auto-executes at 60% consensus. Rejected on a private proposal — use commit/reveal instead. |
 
 **Staking**
@@ -169,7 +176,7 @@ The *k*-th bonus vote starts at `k² × 100` staked tokens, so the thresholds ar
 | `attach_document(caller, kind, proposal_id, content_hash)` | Anchors an off-chain content hash (e.g. IPFS CID) to a real loan/treasury proposal. |
 | `get_document(kind, proposal_id) -> Option<Bytes>` | View. |
 
-**Views** — `get_member`, `get_loan`, `get_loan_proposal` (auto-refreshes expired phase), `get_treasury_proposal`, `get_loan_policy`, `get_admins`, `is_admin`, `is_member`, `is_eligible_for_loan`, `get_treasury_balance`, `get_total_members`, `get_active_members`, `get_consensus_threshold`, `get_token`, `is_paused`, `get_stake`, `get_pending_yield`, `calculate_loan_terms`, `calculate_exit_share`, `has_voted(kind, proposal_id, voter)`.
+**Views** — `get_member`, `get_loan`, `get_loan_proposal` (auto-refreshes expired phase), `get_treasury_proposal`, `get_loan_policy`, `get_admins`, `is_admin`, `is_member`, `is_eligible_for_loan`, `get_treasury_balance`, `get_treasury_balance_in_asset(asset)`, `is_token_whitelisted(token)`, `get_whitelisted_tokens`, `get_total_members`, `get_active_members`, `get_consensus_threshold`, `get_token`, `is_paused`, `get_stake`, `get_pending_yield`, `calculate_loan_terms`, `calculate_exit_share`, `has_voted(kind, proposal_id, voter)`.
 
 ## Event catalog
 
@@ -195,6 +202,10 @@ Every state-changing call publishes an event, which `ourdao-backend` indexes sin
 | `tre_prop` | `(id, amount, destination, private)` | `propose_treasury_withdrawal` |
 | `tre_vote` | `(id, voter, support)` | `vote_on_treasury_proposal` |
 | `tre_exec` | `(id, amount, destination)` | auto-fired on execution |
+| `loan_asst` / `tre_asset` | `(id, asset)` | `request_loan_in_asset` / `propose_withdrawal_in_asset`, only when `asset` isn't the base token |
+| `prop_canc` | `(proposal_id, timestamp)` | `cancel_loan_proposal` / `cancel_treasury_proposal` |
+| `tok_prop` | `(caller, token, execution_time)` | `propose_token_addition` |
+| `tok_add` / `tok_rem` | `(caller, token)` | `execute_token_addition` / `remove_token` |
 | `staked` / `unstaked` | `(member, amount, new_stake)` | `stake` / `unstake` |
 | `name_reg` | `(name, owner)` | `register_name` |
 | `committed` | `(proposal_id, voter)` | `commit_treasury_vote` |
@@ -214,6 +225,7 @@ Numeric codes are stable and part of the ABI — new variants get appended rathe
 | 50 | Treasury: `TreasuryProposalNotFound` |
 | 60–67 | Native-swap modules: `NameTaken`, `NameNotFound`, `NoStake`, `InsufficientStake`, `NoCommitment`, `CommitmentMismatch`, `AlreadyRevealed`, `NothingToClaim` |
 | 70–72 | Appended: `ProposalNotExpired`, `InvalidName`, `NotYetRevealed` |
+| 83–87 | Multi-token treasury: `TokenNotWhitelisted`, `TokenAlreadyWhitelisted`, `NoPendingTokenAddition`, `AssetMismatch`, `CannotRemoveBaseToken` |
 
 ## Build & test
 
@@ -242,7 +254,7 @@ cargo build --target wasm32v1-none --release
 stellar contract build --optimize
 ```
 
-CI (`.github/workflows/ci.yml`) runs `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`, and the wasm build in one job on every push and PR. A separate `audit` job runs `cargo audit` on the same triggers — it's split out so a newly published advisory (which can land against a pin we already know about and can't move, like the one below) surfaces visibly without blocking merges on unrelated PRs.
+CI (`.github/workflows/ci.yml`) first runs a fast `check` job (`cargo check --locked --all-targets`) that the other build jobs depend on, then runs `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`, and the wasm build in one job on every push and PR. A separate `audit` job runs `cargo audit` on the same triggers — it's split out so a newly published advisory (which can land against a pin we already know about and can't move, like the one below) surfaces visibly without blocking merges on unrelated PRs.
 
 > **Note on dependencies:** `Cargo.lock` pins `ed25519-dalek` to `2.2.0`. A newer
 > transitive release (`3.0.0`) is incompatible with the pinned `rand_core` used by
