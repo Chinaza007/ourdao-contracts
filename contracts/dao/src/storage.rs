@@ -197,6 +197,7 @@ pub fn set_total_members(env: &Env, n: u32) {
     env.storage().instance().set(&DataKey::TotalMembers, &n);
 }
 
+#[allow(dead_code)]
 pub fn get_total_contributions(env: &Env) -> i128 {
     env.storage()
         .instance()
@@ -204,6 +205,7 @@ pub fn get_total_contributions(env: &Env) -> i128 {
         .unwrap_or(0)
 }
 
+#[allow(dead_code)]
 pub fn set_total_contributions(env: &Env, amount: i128) {
     env.storage()
         .instance()

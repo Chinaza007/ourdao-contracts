@@ -220,8 +220,9 @@ fn exit_dao_succeeds_when_treasury_funded() {
 
 // ==================== issue #353: maintained ActiveContributions ====================
 fn active_contributions(s: &Setup) -> i128 {
-    s.env
-        .as_contract(&s.client.address, || crate::storage::get_active_contributions(&s.env))
+    s.env.as_contract(&s.client.address, || {
+        crate::storage::get_active_contributions(&s.env)
+    })
 }
 
 /// Recomputes the total the old O(n) way, to cross-check the running total.

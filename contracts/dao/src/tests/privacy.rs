@@ -206,6 +206,8 @@ fn reveal_removes_commitment_from_storage() {
     assert!(!has_commit(&s), "commitment key must be gone after reveal");
     // The vote still counts, and a second reveal is rejected.
     assert!(s.client.has_voted(&ProposalKind::Treasury, &pid, &voter));
-    let again = s.client.try_reveal_treasury_vote(&voter, &pid, &true, &salt);
+    let again = s
+        .client
+        .try_reveal_treasury_vote(&voter, &pid, &true, &salt);
     assert_eq!(again, Err(Ok(Error::AlreadyRevealed)));
 }

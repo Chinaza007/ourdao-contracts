@@ -631,7 +631,10 @@ pub fn mark_loan_defaulted(env: &Env, loan_id: u32) -> Result<(), Error> {
         member.active_loans = member.active_loans.saturating_sub(1);
         storage::set_member(env, &member);
         if penalty > 0 {
-            storage::set_active_contributions(env, storage::get_active_contributions(env) - penalty);
+            storage::set_active_contributions(
+                env,
+                storage::get_active_contributions(env) - penalty,
+            );
         }
     }
     storage::extend_instance(env);

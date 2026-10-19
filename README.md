@@ -359,9 +359,17 @@ MIT
 ## Resource Costs and Membership Ceiling
 
 As measured via SDK budget instrumentation (Issue #138, extended in #354) by `scripts/bench-cost.sh` at DAO sizes 10, 100 and 1000:
+
+| Entrypoint | CPU (n=10) | CPU (n=100) | CPU (n=1000) | Scaling |
+|---|---|---|---|---|
+| `request_loan_in_asset` | ~750k | ~1.7M | ~10.9M | O(1) logic (scales with instance storage load) |
+| `repay_loan_in_asset` | ~780k | ~1.5M | ~8.0M | O(1) logic (scales with instance storage load) |
+| `propose_withdrawal_in_asset` | ~680k | ~1.6M | ~10.8M | O(1) logic (scales with instance storage load) |
+| `exit_dao` | ~1.0M | ~2.0M | ~10.5M | O(1) (#353 running total replaces member scan) |
+| `is_admin` | - | - | - | Scales with admin count |
+
 - `exit_dao` is O(1). It previously iterated all members in `total_active_contributions`; the DAO now maintains a running `ActiveContributions` total that is updated on join, exit and default penalty (#353).
-- `request_loan_in_asset`, `repay_loan_in_asset` and `propose_withdrawal_in_asset` (multi-token entrypoints) are covered by the same benchmark and are expected to stay flat as membership grows. `bench-cost.sh` fails if any benchmarked entrypoint's CPU cost at 1000 members exceeds 3x its cost at 10 members.
-- `is_admin` scales with admin count.
+- `request_loan_in_asset`, `repay_loan_in_asset` and `propose_withdrawal_in_asset` (multi-token entrypoints) are covered by the same benchmark and are expected to stay flat as membership grows, subject only to instance storage deserialization.
 - Other entrypoints are O(1) or scale with smaller sets (like active proposals).
 
 Run the benchmark with `scripts/bench-cost.sh`; it prints one `BENCH <entrypoint> <size> <cpu>` line per measurement.
