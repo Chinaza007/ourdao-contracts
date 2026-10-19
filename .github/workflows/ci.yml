@@ -12,7 +12,35 @@ env:
   WASM_TARGET: wasm32v1-none
 
 jobs:
+  # Fast first gate (#238): a merge that leaves the crate unparseable or
+  # uncompilable fails here within a couple of minutes, and the slower jobs
+  # that `needs` it are skipped instead of each failing on the same error.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # Same cache as build-and-test, under its own key so this job's smaller
+      # `target` dir never takes the slot build-and-test saves into.
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check (all targets)
+        run: cargo check --locked --all-targets
+
   build-and-test:
+    needs: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -106,6 +134,7 @@ jobs:
         run: cargo check --locked --all-targets
 
   reproducible-build:
+    needs: check
     runs-on: ubuntu-latest
     permissions:
       contents: read

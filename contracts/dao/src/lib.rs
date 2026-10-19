@@ -141,6 +141,17 @@ impl OurDao {
         loans::request_loan(&env, borrower, amount, metadata_cid)
     }
 
+    /// Requests a loan denominated in a specific whitelisted asset.
+    pub fn request_loan_in_asset(
+        env: Env,
+        borrower: Address,
+        amount: i128,
+        asset: Address,
+        metadata_cid: Option<String>,
+    ) -> Result<u32, Error> {
+        loans::request_loan_in_asset(&env, borrower, amount, asset, metadata_cid)
+    }
+
     pub fn edit_loan_proposal(
         env: Env,
         borrower: Address,
@@ -148,6 +159,16 @@ impl OurDao {
         new_amount: i128,
     ) -> Result<(), Error> {
         loans::edit_loan_proposal(&env, borrower, proposal_id, new_amount)
+    }
+
+    /// Withdraws a loan proposal while it is still in its editing period.
+    /// See `loans::cancel_loan_proposal`.
+    pub fn cancel_loan_proposal(
+        env: Env,
+        borrower: Address,
+        proposal_id: u32,
+    ) -> Result<(), Error> {
+        loans::cancel_loan_proposal(&env, borrower, proposal_id)
     }
 
     pub fn vote_on_loan_proposal(
@@ -176,6 +197,16 @@ impl OurDao {
 
     pub fn repay_loan(env: Env, borrower: Address, loan_id: u32) -> Result<(), Error> {
         loans::repay_loan(&env, borrower, loan_id)
+    }
+
+    /// Repays a loan using the asset the loan was denominated in.
+    pub fn repay_loan_in_asset(
+        env: Env,
+        borrower: Address,
+        loan_id: u32,
+        asset: Address,
+    ) -> Result<(), Error> {
+        loans::repay_loan_in_asset(&env, borrower, loan_id, asset)
     }
 
     /// Repays up to `amount` of a loan's outstanding balance. See
@@ -214,6 +245,29 @@ impl OurDao {
         treasury::propose_withdrawal(&env, proposer, amount, destination, reason, private)
     }
 
+    /// Proposes a treasury withdrawal denominated in a specific whitelisted asset.
+    /// Named without the `treasury_` prefix because Soroban caps entrypoint
+    /// names at 32 characters.
+    pub fn propose_withdrawal_in_asset(
+        env: Env,
+        proposer: Address,
+        amount: i128,
+        asset: Address,
+        destination: Address,
+        reason: String,
+        private: bool,
+    ) -> Result<u32, Error> {
+        treasury::propose_withdrawal_in_asset(
+            &env,
+            proposer,
+            amount,
+            asset,
+            destination,
+            reason,
+            private,
+        )
+    }
+
     pub fn vote_on_treasury_proposal(
         env: Env,
         voter: Address,
@@ -221,6 +275,16 @@ impl OurDao {
         support: bool,
     ) -> Result<(), Error> {
         treasury::vote(&env, voter, proposal_id, support)
+    }
+
+    /// Withdraws a pending treasury proposal within the policy's editing
+    /// period. See `treasury::cancel_treasury_proposal`.
+    pub fn cancel_treasury_proposal(
+        env: Env,
+        proposer: Address,
+        proposal_id: u32,
+    ) -> Result<(), Error> {
+        treasury::cancel_treasury_proposal(&env, proposer, proposal_id)
     }
 
     pub fn expire_treasury_proposal(env: Env, proposal_id: u32) -> Result<(), Error> {
@@ -236,7 +300,8 @@ impl OurDao {
     #[allow(deprecated)]
     pub fn bump_dao_ttl(env: Env) {
         storage::extend_instance(&env);
-        env.events().publish((soroban_sdk::symbol_short!("TtlBumped"),), ());
+        env.events()
+            .publish((soroban_sdk::symbol_short!("TtlBumped"),), ());
     }
 
     // ==================== native swap: staking ====================
@@ -370,6 +435,11 @@ impl OurDao {
         util::treasury_balance(&env)
     }
 
+    /// Returns the treasury balance held in a specific whitelisted asset.
+    pub fn get_treasury_balance_in_asset(env: Env, asset: Address) -> i128 {
+        util::treasury_balance_in_asset(&env, &asset)
+    }
+
     pub fn get_total_members(env: Env) -> u32 {
         storage::get_total_members(&env)
     }
@@ -384,6 +454,34 @@ impl OurDao {
 
     pub fn get_token(env: Env) -> Address {
         storage::get_token(&env)
+    }
+
+    // ==================== token whitelist ====================
+
+    /// Proposes adding `token` to the treasury's supported-asset whitelist.
+    /// Requires admin consensus; see `admin::propose_token_addition`.
+    pub fn propose_token_addition(env: Env, caller: Address, token: Address) -> Result<(), Error> {
+        admin::propose_token_addition(&env, caller, token)
+    }
+
+    /// Executes a previously proposed token addition once consensus is met.
+    pub fn execute_token_addition(env: Env, caller: Address, token: Address) -> Result<(), Error> {
+        admin::execute_token_addition(&env, caller, token)
+    }
+
+    /// Removes `token` from the supported-asset whitelist.
+    pub fn remove_token(env: Env, caller: Address, token: Address) -> Result<(), Error> {
+        admin::remove_token(&env, caller, token)
+    }
+
+    /// Returns whether `token` is currently an approved treasury asset.
+    pub fn is_token_whitelisted(env: Env, token: Address) -> bool {
+        storage::is_token_whitelisted(&env, &token)
+    }
+
+    /// Returns the full list of approved treasury assets.
+    pub fn get_whitelisted_tokens(env: Env) -> Vec<Address> {
+        storage::get_whitelisted_tokens(&env)
     }
 
     pub fn is_paused(env: Env) -> bool {

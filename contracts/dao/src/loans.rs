@@ -11,8 +11,13 @@ use crate::util;
 /// Quote the terms a loan of `amount` would carry right now. Interest scales
 /// linearly with the loan's size relative to the treasury, clamped to policy.
 pub fn calculate_loan_terms(env: &Env, amount: i128) -> LoanTerms {
+    quote_terms(env, amount, util::treasury_balance(env))
+}
+
+/// [`calculate_loan_terms`] against an explicit treasury balance, so loans in
+/// a non-base asset are priced against the treasury held in that asset.
+fn quote_terms(env: &Env, amount: i128, treasury: i128) -> LoanTerms {
     let policy = storage::get_policy(env);
-    let treasury = util::treasury_balance(env);
 
     let loan_ratio = if treasury > 0 {
         amount
@@ -70,7 +75,6 @@ pub fn is_eligible_for_loan(env: &Env, member: &Address) -> Result<(), Error> {
 // `env.events().publish` is deprecated in soroban-sdk in favour of
 // `#[contractevent]`, but migration is a coordinated, breaking wire-format
 // change (#85).  Suppress per-function so unrelated deprecations still surface.
-#[allow(deprecated)]
 pub fn request_loan(
     env: &Env,
     borrower: Address,
@@ -78,8 +82,26 @@ pub fn request_loan(
     metadata_cid: Option<String>,
 ) -> Result<u32, Error> {
     util::require_initialized(env)?;
+    let base = storage::get_token(env);
+    request_loan_in_asset(env, borrower, amount, base, metadata_cid)
+}
+
+/// Requests a loan of `amount` denominated in `asset`, which must be
+/// whitelisted. Size limits and pricing use the treasury held in that asset.
+#[allow(deprecated)]
+pub fn request_loan_in_asset(
+    env: &Env,
+    borrower: Address,
+    amount: i128,
+    asset: Address,
+    metadata_cid: Option<String>,
+) -> Result<u32, Error> {
+    util::require_initialized(env)?;
     util::require_not_paused(env)?;
     util::require_active_member(env, &borrower)?;
+    if !storage::is_token_whitelisted(env, &asset) {
+        return Err(Error::TokenNotWhitelisted);
+    }
 
     if amount <= 0 {
         return Err(Error::InvalidAmount);
@@ -95,13 +117,13 @@ pub fn request_loan(
     is_eligible_for_loan(env, &borrower)?;
 
     let policy = storage::get_policy(env);
-    let treasury = util::treasury_balance(env);
+    let treasury = util::treasury_balance_in_asset(env, &asset);
     let max_loan = treasury * policy.max_loan_to_treasury_ratio as i128 / BASIS_POINTS;
     if amount > max_loan {
         return Err(Error::ExceedsTreasuryRatio);
     }
 
-    let terms = calculate_loan_terms(env, amount);
+    let terms = quote_terms(env, amount, treasury);
     let now = env.ledger().timestamp();
     let id = storage::next_id(env, storage::DataKey::NextProposalId);
     let proposal = LoanProposal {
@@ -123,6 +145,13 @@ pub fn request_loan(
         last_edited_at: None,
     };
     storage::set_loan_proposal(env, &proposal);
+    // Only non-base assets are recorded, so base-token loans keep their
+    // existing storage footprint and events.
+    if asset != storage::get_token(env) {
+        storage::set_loan_asset(env, id, &asset);
+        env.events()
+            .publish((symbol_short!("loan_asst"),), (id, asset));
+    }
     storage::extend_instance(env);
 
     env.events().publish(
@@ -157,7 +186,12 @@ pub fn edit_loan_proposal(
 
     let prev_amount = proposal.amount;
     let prev_total_repayment = proposal.total_repayment;
-    let terms = calculate_loan_terms(env, new_amount);
+    let asset = storage::get_loan_asset(env, proposal_id);
+    let terms = quote_terms(
+        env,
+        new_amount,
+        util::treasury_balance_in_asset(env, &asset),
+    );
     proposal.amount = new_amount;
     proposal.interest_rate = terms.interest_rate;
     proposal.duration = terms.duration;
@@ -185,11 +219,8 @@ pub fn edit_loan_proposal(
 /// borrower may cancel, on,y while the proposal is still in the editing
 /// phase and pending. Emits a dedicated `ProposalCancelled` event so
 /// off-chain indexers can track cancellations cleanly.
-pub fn cancel_loan_proposal(
-    env: &Env,
-    borrower: Address,
-    proposal_id: u32,
-) -> Result<(), Error> {
+#[allow(deprecated)]
+pub fn cancel_loan_proposal(env: &Env, borrower: Address, proposal_id: u32) -> Result<(), Error> {
     util::require_initialized(env)?;
     util::require_not_paused(env)?;
     util::require_active_member(env, &borrower)?;
@@ -210,10 +241,8 @@ pub fn cancel_loan_proposal(
     proposal.phase = ProposalPhase::Expired;
     storage::set_loan_proposal(env, &proposal);
 
-    env.events().publish(
-        (symbol_short!("prop_canc"),),
-        (proposal_id, now),
-    );
+    env.events()
+        .publish((symbol_short!("prop_canc"),), (proposal_id, now));
     Ok(())
 }
 
@@ -327,12 +356,14 @@ pub fn disburse_approved_loan(env: &Env, proposal_id: u32) -> Result<(), Error> 
 
 #[allow(deprecated)]
 fn approve_and_disburse(env: &Env, proposal: &LoanProposal) -> Result<(), Error> {
-    if util::treasury_balance(env) < proposal.amount {
+    let asset = storage::get_loan_asset(env, proposal.id);
+    let treasury = util::treasury_balance_in_asset(env, &asset);
+    if treasury < proposal.amount {
         return Err(Error::InsufficientTreasury);
     }
 
     // Issue 61: re-quote at disbursement so rate reflects current treasury balance
-    let terms = calculate_loan_terms(env, proposal.amount);
+    let terms = quote_terms(env, proposal.amount, treasury);
 
     let now = env.ledger().timestamp();
     // Reuse the proposal's own id rather than a separate counter: a proposal
@@ -361,7 +392,7 @@ fn approve_and_disburse(env: &Env, proposal: &LoanProposal) -> Result<(), Error>
     borrower.active_loans += 1;
     storage::set_member(env, &borrower);
 
-    util::token_client(env).transfer(
+    util::token_client_for(env, &asset).transfer(
         &util::contract_address(env),
         &proposal.borrower,
         &proposal.amount,
@@ -385,6 +416,24 @@ fn approve_and_disburse(env: &Env, proposal: &LoanProposal) -> Result<(), Error>
 /// working unchanged — see [`repay_loan_partial`] for why a breaking ABI
 /// change to this entrypoint was avoided instead.
 pub fn repay_loan(env: &Env, borrower: Address, loan_id: u32) -> Result<(), Error> {
+    repay_loan_internal(env, borrower, loan_id, None)
+}
+
+/// [`repay_loan`] with the caller naming the asset they repay in, so a client
+/// can't silently pay in the wrong token: `asset` must be the loan's own asset.
+pub fn repay_loan_in_asset(
+    env: &Env,
+    borrower: Address,
+    loan_id: u32,
+    asset: Address,
+) -> Result<(), Error> {
+    util::require_initialized(env)?;
+    if storage::get_loan(env, loan_id).is_none() {
+        return Err(Error::LoanNotFound);
+    }
+    if storage::get_loan_asset(env, loan_id) != asset {
+        return Err(Error::AssetMismatch);
+    }
     repay_loan_internal(env, borrower, loan_id, None)
 }
 
@@ -415,11 +464,9 @@ pub fn repay_loan_partial(
     repay_loan_internal(env, borrower, loan_id, Some(amount))
 }
 
-pub fn repay_partial(
-    env: &Env,
-    borrower: Address,
-    amount: i128,
-) -> Result<(), Error> {
+// Not wired to an entrypoint; kept unchanged from the pre-merge version.
+#[allow(dead_code, deprecated)]
+pub fn repay_partial(env: &Env, borrower: Address, amount: i128) -> Result<(), Error> {
     let next_id = storage::next_id(env, storage::DataKey::NextProposalId);
     let mut loan_id_opt = None;
     for i in 1..next_id {
@@ -432,7 +479,10 @@ pub fn repay_partial(
     }
     let loan_id = loan_id_opt.ok_or(Error::LoanNotFound)?;
     repay_loan_internal(env, borrower.clone(), loan_id, Some(amount))?;
-    env.events().publish((soroban_sdk::String::from_str(env, "loan_partial_repaid"),), (borrower, amount));
+    env.events().publish(
+        (soroban_sdk::String::from_str(env, "loan_partial_repaid"),),
+        (borrower, amount),
+    );
     Ok(())
 }
 
@@ -460,7 +510,8 @@ fn repay_loan_internal(
     let now = env.ledger().timestamp();
     if now > loan.due_time {
         let policy = storage::get_policy(env);
-        let penalty = outstanding * (policy.default_penalty_bps as i128) / crate::types::BASIS_POINTS;
+        let penalty =
+            outstanding * (policy.default_penalty_bps as i128) / crate::types::BASIS_POINTS;
         outstanding += penalty;
         loan.total_repayment += penalty;
         loan.principal += penalty; // Keep penalty in treasury, don't distribute as interest
@@ -471,7 +522,8 @@ fn repay_loan_internal(
         return Err(Error::InvalidAmount);
     }
 
-    util::token_client(env).transfer(&borrower, util::contract_address(env), &amount);
+    let asset = storage::get_loan_asset(env, loan_id);
+    util::token_client_for(env, &asset).transfer(&borrower, util::contract_address(env), &amount);
 
     // Interest-first split: how much of the loan's total interest was
     // already covered before this payment vs. after it. The difference is
@@ -494,7 +546,11 @@ fn repay_loan_internal(
     }
     storage::set_loan(env, &loan);
 
-    distribute_interest(env, interest_component);
+    // Yield is accounted and claimed in the base token, so interest paid in
+    // any other asset stays in the treasury rather than being distributed.
+    if asset == storage::get_token(env) {
+        distribute_interest(env, interest_component);
+    }
 
     env.events()
         .publish((symbol_short!("loan_rpy"),), (loan_id, borrower, remaining));
@@ -595,7 +651,7 @@ pub fn mark_loan_defaulted(env: &Env, loan_id: u32) -> Result<(), Error> {
 /// or exit). Their pending yield is `(accumulator - snapshot) * 1`.
 ///
 /// `pub(crate)` (rather than private) solely so the property tests in
-/// `test.rs` can drive it directly with arbitrary `interest` values instead
+/// `tests/properties.rs` can drive it directly with arbitrary `interest` values instead
 /// of only the ones reachable through a real loan's computed interest.
 #[allow(deprecated)]
 pub(crate) fn distribute_interest(env: &Env, interest: i128) {

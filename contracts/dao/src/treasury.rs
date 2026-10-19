@@ -8,11 +8,28 @@ use crate::util;
 // `env.events().publish` is deprecated in soroban-sdk in favour of
 // `#[contractevent]`, but migration is a coordinated, breaking wire-format
 // change (#85).  Suppress per-function so unrelated deprecations still surface.
-#[allow(deprecated)]
 pub fn propose_withdrawal(
     env: &Env,
     proposer: Address,
     amount: i128,
+    destination: Address,
+    reason: String,
+    private: bool,
+) -> Result<u32, Error> {
+    util::require_initialized(env)?;
+    let base = storage::get_token(env);
+    propose_withdrawal_in_asset(env, proposer, amount, base, destination, reason, private)
+}
+
+/// Proposes paying `amount` of `asset` (which must be whitelisted) out of the
+/// treasury. Funds reserved for approved-but-undisbursed loans in the same
+/// asset are not available (#172).
+#[allow(deprecated)]
+pub fn propose_withdrawal_in_asset(
+    env: &Env,
+    proposer: Address,
+    amount: i128,
+    asset: Address,
     destination: Address,
     reason: String,
     private: bool,
@@ -27,7 +44,11 @@ pub fn propose_withdrawal(
     if reason.is_empty() || reason.len() > 256 {
         return Err(Error::InvalidProposal);
     }
-    let available = util::treasury_balance(env) - util::reserved_loan_commitments(env);
+    if !storage::is_token_whitelisted(env, &asset) {
+        return Err(Error::TokenNotWhitelisted);
+    }
+    let available =
+        util::treasury_balance_in_asset(env, &asset) - util::reserved_loan_commitments(env, &asset);
     if amount > available {
         return Err(Error::InsufficientTreasury);
     }
@@ -50,6 +71,13 @@ pub fn propose_withdrawal(
         private,
     };
     storage::set_treasury_proposal(env, &proposal);
+    // Only non-base assets are recorded, so base-token proposals keep their
+    // existing storage footprint and events.
+    if asset != storage::get_token(env) {
+        storage::set_treasury_asset(env, id, &asset);
+        env.events()
+            .publish((symbol_short!("tre_asset"),), (id, asset));
+    }
     storage::extend_instance(env);
 
     env.events().publish(
@@ -152,11 +180,12 @@ pub fn execute_approved(env: &Env, proposal_id: u32) -> Result<(), Error> {
 
 #[allow(deprecated)]
 fn execute(env: &Env, proposal: &mut TreasuryProposal) -> Result<(), Error> {
-    if util::treasury_balance(env) < proposal.amount {
+    let asset = storage::get_treasury_asset(env, proposal.id);
+    if util::treasury_balance_in_asset(env, &asset) < proposal.amount {
         return Err(Error::InsufficientTreasury);
     }
     proposal.status = ProposalStatus::Executed;
-    util::token_client(env).transfer(
+    util::token_client_for(env, &asset).transfer(
         &util::contract_address(env),
         &proposal.destination,
         &proposal.amount,
@@ -172,6 +201,7 @@ fn execute(env: &Env, proposal: &mut TreasuryProposal) -> Result<(), Error> {
 /// proposer may cancel, only while the proposal is still Pending and within
 /// the editing window. Emits a dedicated `ProposalCancelled` event so
 /// off-chain indexers can track cancellations cleanly.
+#[allow(deprecated)]
 pub fn cancel_treasury_proposal(
     env: &Env,
     proposer: Address,
@@ -180,8 +210,8 @@ pub fn cancel_treasury_proposal(
     util::require_initialized(env)?;
     util::require_not_paused(env)?;
     util::require_active_member(env, &proposer)?;
-    let mut proposal = storage::get_treasury_proposal(env, proposal_id)
-        .ok_or(Error::TreasuryProposalNotFound)?;
+    let mut proposal =
+        storage::get_treasury_proposal(env, proposal_id).ok_or(Error::TreasuryProposalNotFound)?;
     if proposal.proposer != proposer {
         return Err(Error::NotAuthorized);
     }
@@ -199,10 +229,8 @@ pub fn cancel_treasury_proposal(
     proposal.status = ProposalStatus::Cancelled;
     storage::set_treasury_proposal(env, &proposal);
 
-    env.events().publish(
-        (symbol_short!("prop_canc"),),
-        (proposal_id, now),
-    );
+    env.events()
+        .publish((symbol_short!("prop_canc"),), (proposal_id, now));
     Ok(())
 }
 pub fn expire_treasury_proposal(env: &Env, proposal_id: u32) -> Result<(), Error> {

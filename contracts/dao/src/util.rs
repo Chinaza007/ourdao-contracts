@@ -19,6 +19,11 @@ pub fn token_client(env: &Env) -> token::Client<'_> {
     token::Client::new(env, &storage::get_token(env))
 }
 
+/// Token client for any asset, e.g. a whitelisted non-base asset (#236).
+pub fn token_client_for<'a>(env: &'a Env, asset: &Address) -> token::Client<'a> {
+    token::Client::new(env, asset)
+}
+
 pub fn contract_address(env: &Env) -> Address {
     env.current_contract_address()
 }
@@ -26,8 +31,23 @@ pub fn contract_address(env: &Env) -> Address {
 /// Treasury == the DAO's own token balance minus funds earmarked as stake,
 /// so staked principal is never lent out or counted as distributable equity.
 pub fn treasury_balance(env: &Env) -> i128 {
-    let bal = token_client(env).balance(&contract_address(env));
-    bal - storage::get_total_staked(env)
+    treasury_balance_in_asset(env, &storage::get_token(env))
+}
+
+/// The DAO's raw holding of `asset`, staked funds included.
+pub fn treasury_balance_for(env: &Env, asset: &Address) -> i128 {
+    token_client_for(env, asset).balance(&contract_address(env))
+}
+
+/// Spendable treasury in `asset`. Staking only ever happens in the base token,
+/// so staked funds are excluded for the base token alone.
+pub fn treasury_balance_in_asset(env: &Env, asset: &Address) -> i128 {
+    let bal = treasury_balance_for(env, asset);
+    if *asset == storage::get_token(env) {
+        bal - storage::get_total_staked(env)
+    } else {
+        bal
+    }
 }
 
 pub fn require_initialized(env: &Env) -> Result<(), Error> {
@@ -77,7 +97,7 @@ pub fn require_active_member(env: &Env, caller: &Address) -> Result<Member, Erro
 /// One base vote per active member, plus a quadratic (square-root) boost for
 /// staked commitment, capped at `MAX_STAKE_BONUS`.
 pub fn voting_weight(env: &Env, who: &Address) -> i128 {
-    if let Some(_) = storage::get_delegation(env, who) {
+    if storage::get_delegation(env, who).is_some() {
         return 0; // delegated their vote away
     }
     let mut total = BASE_VOTE_WEIGHT + stake_boost(storage::get_stake(env, who));
@@ -169,12 +189,15 @@ pub fn required_votes(active_members: u32, threshold_bps: u32) -> i128 {
 /// quorum but have not yet been disbursed (status == ApprovedPendingDisbursement).
 /// These funds are effectively reserved and must not be double-counted as
 /// available treasury for new withdrawals (#172).
-pub fn reserved_loan_commitments(env: &Env) -> i128 {
+/// Only proposals denominated in `asset` count (#236).
+pub fn reserved_loan_commitments(env: &Env, asset: &Address) -> i128 {
     let count = storage::get_proposal_count(env, storage::DataKey::NextProposalId);
     let mut total: i128 = 0;
     for id in 0..count {
         if let Some(proposal) = storage::get_loan_proposal(env, id) {
-            if proposal.status == ProposalStatus::ApprovedPendingDisbursement {
+            if proposal.status == ProposalStatus::ApprovedPendingDisbursement
+                && storage::get_loan_asset(env, id) == *asset
+            {
                 total += proposal.amount;
             }
         }

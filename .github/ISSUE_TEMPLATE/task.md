@@ -12,7 +12,7 @@ assignees: ''
 
 ## Scope
 
-<!-- Which modules/files are involved? e.g. contracts/dao/src/loans.rs, types.rs, test.rs -->
+<!-- Which modules/files are involved? e.g. contracts/dao/src/loans.rs, types.rs, tests/loans.rs -->
 
 ## Acceptance criteria
 

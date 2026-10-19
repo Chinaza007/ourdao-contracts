@@ -78,4 +78,14 @@ pub enum Error {
     InvalidProposal = 80,
     AlreadyPauser = 81,
     NotPauser = 82,
+    /// The asset is not on the treasury whitelist (#236).
+    TokenNotWhitelisted = 83,
+    /// The asset is already on the treasury whitelist (#236).
+    TokenAlreadyWhitelisted = 84,
+    /// No addition is pending for this asset (#236).
+    NoPendingTokenAddition = 85,
+    /// The asset does not match the one the loan was issued in (#236).
+    AssetMismatch = 86,
+    /// The base token set at initialization can't be removed (#236).
+    CannotRemoveBaseToken = 87,
 }

@@ -174,11 +174,7 @@ pub fn set_consensus_threshold(env: &Env, caller: Address, threshold: u32) -> Re
 }
 
 #[allow(deprecated)]
-pub fn propose_policy_update(
-    env: &Env,
-    caller: Address,
-    policy: LoanPolicy,
-) -> Result<(), Error> {
+pub fn propose_policy_update(env: &Env, caller: Address, policy: LoanPolicy) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     validate_policy(&policy)?;
     let now = env.ledger().timestamp();
@@ -254,5 +250,67 @@ pub fn unpause(env: &Env, caller: Address) -> Result<(), Error> {
     storage::set_paused(env, false);
     extend_instance(env);
     env.events().publish((symbol_short!("unpaused"),), ());
+    Ok(())
+}
+
+// ---- token whitelist (#236) ----
+
+/// Proposes adding `token` to the treasury's supported-asset whitelist. Like a
+/// policy update it only takes effect after `TIMELOCK_DURATION`, giving the
+/// other admins and members time to react before loans and withdrawals can be
+/// denominated in it. The token is probed up front so a typo can't be queued.
+#[allow(deprecated)]
+pub fn propose_token_addition(env: &Env, caller: Address, token: Address) -> Result<(), Error> {
+    util::require_initialized(env)?;
+    util::require_admin(env, &caller)?;
+    if storage::is_token_whitelisted(env, &token) {
+        return Err(Error::TokenAlreadyWhitelisted);
+    }
+    validate_token(env, &token)?;
+    let execution_time = env.ledger().timestamp() + TIMELOCK_DURATION;
+    storage::set_pending_token_addition(env, &token, execution_time);
+    extend_instance(env);
+    env.events().publish(
+        (symbol_short!("tok_prop"),),
+        (caller, token, execution_time),
+    );
+    Ok(())
+}
+
+/// Whitelists a previously proposed `token` once its timelock has expired.
+#[allow(deprecated)]
+pub fn execute_token_addition(env: &Env, caller: Address, token: Address) -> Result<(), Error> {
+    util::require_initialized(env)?;
+    util::require_admin(env, &caller)?;
+    let execution_time =
+        storage::get_pending_token_addition(env, &token).ok_or(Error::NoPendingTokenAddition)?;
+    if env.ledger().timestamp() < execution_time {
+        return Err(Error::TimelockNotExpired);
+    }
+    storage::remove_pending_token_addition(env, &token);
+    storage::set_token_whitelisted(env, &token, true);
+    extend_instance(env);
+    env.events()
+        .publish((symbol_short!("tok_add"),), (caller, token));
+    Ok(())
+}
+
+/// Removes `token` from the whitelist, blocking new loans and withdrawals in
+/// it. Loans already issued in `token` can still be repaid. The base token is
+/// permanent.
+#[allow(deprecated)]
+pub fn remove_token(env: &Env, caller: Address, token: Address) -> Result<(), Error> {
+    util::require_initialized(env)?;
+    util::require_admin(env, &caller)?;
+    if token == storage::get_token(env) {
+        return Err(Error::CannotRemoveBaseToken);
+    }
+    if !storage::is_token_whitelisted(env, &token) {
+        return Err(Error::TokenNotWhitelisted);
+    }
+    storage::set_token_whitelisted(env, &token, false);
+    extend_instance(env);
+    env.events()
+        .publish((symbol_short!("tok_rem"),), (caller, token));
     Ok(())
 }

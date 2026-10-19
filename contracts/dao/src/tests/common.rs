@@ -190,3 +190,44 @@ pub fn refill_treasury(s: &Setup) {
     token::StellarAssetClient::new(&s.env, &s.token.address).mint(&m, &MINT);
     s.client.register_member(&m);
 }
+
+/// Registers a second Stellar asset, whitelists it through the timelocked
+/// admin flow and seeds the DAO treasury with `funding` of it (#236).
+pub fn whitelist_second_asset<'a>(s: &Setup<'a>, funding: i128) -> token::Client<'a> {
+    let issuer = Address::generate(&s.env);
+    let asset = s.env.register_stellar_asset_contract_v2(issuer).address();
+    s.client.propose_token_addition(&s.admin, &asset);
+    advance(&s.env, crate::admin::TIMELOCK_DURATION);
+    s.client.execute_token_addition(&s.admin, &asset);
+    token::StellarAssetClient::new(&s.env, &asset).mint(&s.client.address, &funding);
+    token::Client::new(&s.env, &asset)
+}
+
+/// Mints `amount` of `asset` to `to`.
+pub fn mint_asset(s: &Setup, asset: &Address, to: &Address, amount: i128) {
+    token::StellarAssetClient::new(&s.env, asset).mint(to, &amount);
+}
+
+/// Asserts the most recent `prop_canc` event carries `(proposal_id, now)` as
+/// its data under a single `prop_canc` topic.
+pub fn assert_prop_cancelled_event(env: &Env, proposal_id: u32) {
+    let all = env.events().all();
+    let event = all
+        .events()
+        .iter()
+        .rev()
+        .find(|e| {
+            let ContractEventBody::V0(body) = &e.body;
+            matches!(body.topics.first(), Some(ScVal::Symbol(sym)) if sym.0.to_utf8_string_lossy() == "prop_canc")
+        })
+        .expect("prop_canc event not found")
+        .clone();
+    let ContractEventBody::V0(body) = &event.body;
+    assert_eq!(body.topics.len(), 1);
+    let ScVal::Vec(Some(data)) = &body.data else {
+        panic!("unexpected prop_canc data: {:?}", body.data);
+    };
+    assert_eq!(data.len(), 2);
+    assert_eq!(data[0], ScVal::U32(proposal_id));
+    assert_eq!(data[1], ScVal::U64(env.ledger().timestamp()));
+}

@@ -44,6 +44,14 @@ If `cargo test` passes on a clean checkout, you're set up correctly. If it doesn
 
 ## Running the checks CI runs
 
+### CI
+
+The first job, `check`, runs `cargo check --locked --all-targets` on the PR's merge commit. It exists to catch a broken merge (a syntax error or a missing function) within a couple of minutes. `build-and-test` (format, lint, tests, coverage and wasm build) and `reproducible-build` declare `needs: check`, so when `check` fails they are skipped rather than each failing on the same error. To reproduce it locally:
+
+```bash
+cargo check --locked --all-targets
+```
+
 The `build-and-test` job runs exactly these four, and a pull request that fails any of them will not be merged. Run them locally first:
 
 ```bash
