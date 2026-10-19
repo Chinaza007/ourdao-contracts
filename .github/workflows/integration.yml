@@ -1,0 +1,63 @@
+name: Integration Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  # soroban-sdk requires the wasm32v1-none target (Rust 1.84+).
+  WASM_TARGET: wasm32v1-none
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check (all targets)
+        run: cargo check --locked --all-targets
+
+      - name: Build wasm (release)
+        run: cargo build --locked --target ${{ env.WASM_TARGET }} --release
+
+      - name: Set up local network
+        run: |
+          ./scripts/start-local-network.sh
+
+      - name: Deploy contract
+        run: stellar contract deploy --wasm target/wasm32v1-none/release/ourdao_dao.optimized.wasm --source funder --network test
+
+      - name: Run actions to trigger events
+        run: |
+          ./scripts/run-test-actions.sh
+
+      - name: Start backend indexer
+        run: |
+          ./scripts/start-backend-indexer.sh
+
+      - name: Wait for indexer to process
+        run: sleep 30
+
+      - name: Assert DB rows
+        run: |
+          ./scripts/assert-db-rows.sh
