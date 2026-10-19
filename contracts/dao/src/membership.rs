@@ -115,7 +115,7 @@ pub fn exit_dao(env: &Env, member: Address) -> Result<(), Error> {
     extend_instance(env);
 
     env.events()
-        .publish((symbol_short!("exited"),), (member, share));
+        .publish((symbol_short!("exited"),), (member, share, pending));
     Ok(())
 }
 
