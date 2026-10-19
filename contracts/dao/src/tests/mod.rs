@@ -1,5 +1,6 @@
 mod admin;
 mod common;
+mod costs;
 mod docs;
 mod loans;
 mod membership;
