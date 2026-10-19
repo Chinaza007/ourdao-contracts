@@ -4,6 +4,14 @@ All notable changes to `ourdao-contracts` are documented here. The format follow
 
 ## [Unreleased]
 
+### Changed
+- `exit_dao` / `calculate_exit_share` are now O(1): a maintained `ActiveContributions` total replaces the per-member scan (#353).
+- `treasury::tally` and `loans::vote_on_loan_proposal` read the active-member count (and policy/threshold) once per call (#355).
+- `bench-cost.sh` now runs a real `test_budget_scaling` benchmark that also covers `request_loan_in_asset`, `repay_loan_in_asset` and `propose_withdrawal_in_asset` (#354).
+
+### Fixed
+- Added regression coverage that `reveal_vote` removes the stored commitment (#356).
+
 ### Added
 - `make costs` and `tests/costs.rs`: per-entrypoint CPU, memory, ledger I/O, event size and fee estimates measured against the optimized wasm, plus how votes and `exit_dao` scale with membership; `make size` reports raw and optimized wasm size (#357, #358).
 - Multi-token treasury (#236): `request_loan_in_asset`, `repay_loan_in_asset`, `propose_withdrawal_in_asset`, `get_treasury_balance_in_asset`, and the token whitelist (`propose_token_addition` / `execute_token_addition` behind the 48h timelock, `remove_token`, `is_token_whitelisted`, `get_whitelisted_tokens`). The base token is always whitelisted. New append-only error codes 83–87 and events `loan_asst`, `tre_asset`, `tok_prop`, `tok_add`, `tok_rem`.

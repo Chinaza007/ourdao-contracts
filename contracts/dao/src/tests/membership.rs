@@ -66,11 +66,11 @@ fn yield_accumulator_join_claim_exit_rejoin() {
     s.client.claim_rewards(&v1);
     assert_eq!(s.client.get_pending_yield(&v1), 0);
 
-    // v1 exits — their snapshot is settled so they don't double-claim.
+    // v1 exits â€” their snapshot is settled so they don't double-claim.
     s.client.exit_dao(&v1);
     assert_eq!(s.client.get_pending_yield(&v1), 0);
 
-    // v1 rejoins — snapshot is set to current accumulator, earning nothing
+    // v1 rejoins â€” snapshot is set to current accumulator, earning nothing
     // from interest that accrued before they rejoined.
     s.client.register_member(&v1);
     assert_eq!(s.client.get_pending_yield(&v1), 0);
@@ -216,4 +216,58 @@ fn exit_dao_succeeds_when_treasury_funded() {
     assert!(share > 0);
     s.client.exit_dao(&member);
     assert!(!s.client.is_member(&member));
+}
+
+// ==================== issue #353: maintained ActiveContributions ====================
+fn active_contributions(s: &Setup) -> i128 {
+    s.env.as_contract(&s.client.address, || {
+        crate::storage::get_active_contributions(&s.env)
+    })
+}
+
+/// Recomputes the total the old O(n) way, to cross-check the running total.
+fn scanned_active_contributions(s: &Setup) -> i128 {
+    s.env.as_contract(&s.client.address, || {
+        crate::storage::get_members(&s.env)
+            .iter()
+            .filter_map(|a| crate::storage::get_member(&s.env, &a))
+            .filter(|m| m.status == MemberStatus::ActiveMember)
+            .map(|m| m.contribution)
+            .sum()
+    })
+}
+
+#[test]
+fn active_contributions_tracks_join_exit_and_rejoin() {
+    let s = setup(4);
+    assert_eq!(active_contributions(&s), 4 * FEE);
+
+    let m = s.members.get(0).unwrap();
+    s.client.exit_dao(&m);
+    assert_eq!(active_contributions(&s), 3 * FEE);
+    assert_eq!(active_contributions(&s), scanned_active_contributions(&s));
+
+    s.client.register_member(&m);
+    assert_eq!(active_contributions(&s), 4 * FEE);
+    assert_eq!(active_contributions(&s), scanned_active_contributions(&s));
+}
+
+#[test]
+fn active_contributions_matches_scan_after_default_penalty() {
+    let s = setup(3);
+    let a = s.members.get(0).unwrap();
+    let b = s.members.get(1).unwrap();
+    let c = s.members.get(2).unwrap();
+
+    let pid = s.client.request_loan(&a, &500, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&b, &pid, &true);
+    s.client.vote_on_loan_proposal(&c, &pid, &true);
+
+    advance(&s.env, LOAN_DURATION + 1);
+    s.client.mark_loan_defaulted(&pid);
+
+    let total = active_contributions(&s);
+    assert!(total < 3 * FEE, "penalty must reduce the running total");
+    assert_eq!(total, scanned_active_contributions(&s));
 }

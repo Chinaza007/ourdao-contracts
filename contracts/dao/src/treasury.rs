@@ -119,7 +119,12 @@ pub fn tally(
     // long after the intended voting window. Mirror the loan proposal
     // lifecycle: once VOTING_PERIOD has elapsed since creation, persist the
     // Expired status and reject further votes.
-    if env.ledger().timestamp() > proposal.created_at + proposal.voting_period {
+    let voting_end = if proposal.private {
+        proposal.created_at + proposal.voting_period.saturating_mul(2)
+    } else {
+        proposal.created_at + proposal.voting_period
+    };
+    if env.ledger().timestamp() > voting_end {
         return Err(Error::NotInVotingPhase);
     }
     if storage::has_treasury_voted(env, proposal.id, voter) {

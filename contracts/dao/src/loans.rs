@@ -305,13 +305,15 @@ pub fn vote_on_loan_proposal(
     env.events()
         .publish((symbol_short!("loan_vote"),), (proposal_id, voter, support));
 
+    // Read the policy and the active-member count once per call (#355).
     let policy = storage::get_policy(env);
     let threshold = if policy.quorum_bps > 0 {
         policy.quorum_bps
     } else {
         storage::get_threshold(env)
     };
-    let required = util::required_votes(storage::get_active_members(env), threshold);
+    let active_members = storage::get_active_members(env);
+    let required = util::required_votes(active_members, threshold);
     if proposal.for_votes >= required && proposal.status == ProposalStatus::Pending {
         proposal.status = ProposalStatus::ApprovedPendingDisbursement;
         proposal.phase = ProposalPhase::Executed;
@@ -325,7 +327,7 @@ pub fn vote_on_loan_proposal(
             );
         }
     } else if proposal.status == ProposalStatus::Pending {
-        let remaining = storage::get_active_members(env).saturating_sub(proposal.votes_cast);
+        let remaining = active_members.saturating_sub(proposal.votes_cast);
         let max_remaining = remaining as i128 * (1 + util::MAX_STAKE_BONUS);
         if proposal.for_votes + max_remaining < required {
             proposal.status = ProposalStatus::Rejected;
@@ -629,7 +631,10 @@ pub fn mark_loan_defaulted(env: &Env, loan_id: u32) -> Result<(), Error> {
         member.active_loans = member.active_loans.saturating_sub(1);
         storage::set_member(env, &member);
         if penalty > 0 {
-            storage::set_total_contributions(env, storage::get_total_contributions(env) - penalty);
+            storage::set_active_contributions(
+                env,
+                storage::get_active_contributions(env) - penalty,
+            );
         }
     }
     storage::extend_instance(env);

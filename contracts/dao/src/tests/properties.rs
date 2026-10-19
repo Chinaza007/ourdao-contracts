@@ -10,11 +10,11 @@ use crate::{OurDao, OurDaoClient};
 //
 // The example tests in the sibling modules pin down behavior at specific, hand-picked numbers.
 // These instead generate wide ranges of inputs (amounts, treasury sizes,
-// stakes, contributions — including near-`i128::MAX` boundaries) and check
+// stakes, contributions â€” including near-`i128::MAX` boundaries) and check
 // invariants that must hold for *any* input, not just the ones a human
 // happened to write down. `amount` inputs are capped at `AMOUNT_BOUND`
 // (rather than the full `i128` range) specifically to stay clear of the
-// *intermediate* overflow in `amount * BASIS_POINTS` — the invariants below
+// *intermediate* overflow in `amount * BASIS_POINTS` â€” the invariants below
 // are about the post-clamp behavior of these functions, not about auditing
 // every arithmetic op in isolation.
 
@@ -48,7 +48,7 @@ proptest! {
     #![proptest_config(ProptestConfig::with_cases(40))]
 
     /// `calculate_loan_terms`'s rate is a linear curve clamped to
-    /// `[min_interest_rate, max_interest_rate]` — no amount or treasury
+    /// `[min_interest_rate, max_interest_rate]` â€” no amount or treasury
     /// size should ever push it outside that band, and the quoted
     /// repayment should never be less than the amount requested.
     #[test]
@@ -69,8 +69,8 @@ proptest! {
     #![proptest_config(ProptestConfig::with_cases(80))]
 
     /// One base vote plus a square-root boost of up to `MAX_STAKE_BONUS` (5)
-    /// bonus votes — `k` of them cost `STAKE_WEIGHT_UNIT * k^2` staked tokens
-    /// (#182) — so weight is always in `[1, 6]` for any non-negative stake,
+    /// bonus votes â€” `k` of them cost `STAKE_WEIGHT_UNIT * k^2` staked tokens
+    /// (#182) â€” so weight is always in `[1, 6]` for any non-negative stake,
     /// up to and including `i128::MAX`.
     #[test]
     fn voting_weight_stays_in_bounds(stake in 0i128..=i128::MAX) {
@@ -128,7 +128,7 @@ proptest! {
     }
 
     /// Past the last band the boost is pinned at the cap, however much more
-    /// is staked — the whale ceiling.
+    /// is staked â€” the whale ceiling.
     #[test]
     fn boost_saturates_at_the_cap(surplus in 0i128..=AMOUNT_BOUND) {
         let stake = STAKE_WEIGHT_UNIT * MAX_STAKE_BONUS * MAX_STAKE_BONUS + surplus;
@@ -205,7 +205,7 @@ proptest! {
 
     /// `calculate_exit_share` is a pro-rata slice of the treasury.
     /// However a member's `contribution` got to its current value
-    /// (join at the fee, then possibly reduced by default slashing —
+    /// (join at the fee, then possibly reduced by default slashing â€”
     /// see issue's rejoin-after-exit note), each member's share is
     /// bounded by their contribution's fraction of the total, so the
     /// sum across every member can never exceed the treasury itself.
@@ -226,8 +226,13 @@ proptest! {
             client.register_member(&m);
             env.as_contract(&contract_id, || {
                 let mut rec = crate::storage::get_member(&env, &m).unwrap();
+                let delta = c - rec.contribution;
                 rec.contribution = c;
                 crate::storage::set_member(&env, &rec);
+                crate::storage::set_active_contributions(
+                    &env,
+                    crate::storage::get_active_contributions(&env) + delta,
+                );
             });
             members.push_back(m);
         }
