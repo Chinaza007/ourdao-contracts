@@ -31,19 +31,33 @@ fn initialize_rejects_invalid_scalar_parameters() {
     let env = Env::default();
     env.mock_all_auths();
     let token_admin = Address::generate(&env);
-    let token = env.register_stellar_asset_contract_v2(token_admin).address();
+    let token = env
+        .register_stellar_asset_contract_v2(token_admin)
+        .address();
     let contract = env.register(OurDao, ());
     let client = OurDaoClient::new(&env, &contract);
     let admin = Address::generate(&env);
     let mut admins = Vec::new(&env);
     admins.push_back(admin);
 
-    assert_eq!(client.try_initialize(&admins, &0, &FEE, &token, &policy()), Err(Ok(Error::InvalidThreshold)));
-    assert_eq!(client.try_initialize(&admins, &10_001, &FEE, &token, &policy()), Err(Ok(Error::InvalidThreshold)));
-    assert_eq!(client.try_initialize(&admins, &5_100, &0, &token, &policy()), Err(Ok(Error::InvalidAmount)));
+    assert_eq!(
+        client.try_initialize(&admins, &0, &FEE, &token, &policy()),
+        Err(Ok(Error::InvalidThreshold))
+    );
+    assert_eq!(
+        client.try_initialize(&admins, &10_001, &FEE, &token, &policy()),
+        Err(Ok(Error::InvalidThreshold))
+    );
+    assert_eq!(
+        client.try_initialize(&admins, &5_100, &0, &token, &policy()),
+        Err(Ok(Error::InvalidAmount))
+    );
     let mut invalid_policy = policy();
     invalid_policy.max_loan_duration = 0;
-    assert_eq!(client.try_initialize(&admins, &5_100, &FEE, &token, &invalid_policy), Err(Ok(Error::InvalidLoanPolicy)));
+    assert_eq!(
+        client.try_initialize(&admins, &5_100, &FEE, &token, &invalid_policy),
+        Err(Ok(Error::InvalidLoanPolicy))
+    );
 }
 
 #[test]
@@ -74,7 +88,7 @@ fn pause_blocks_all_mutating_entrypoints() {
         &borrower,
         &100,
         &newcomer,
-        &String::from_slice(&s.env, "test"),
+        &String::from_str(&s.env, "test"),
         &false,
     );
 
@@ -166,7 +180,7 @@ fn pause_blocks_all_mutating_entrypoints() {
         &borrower,
         &100,
         &newcomer,
-        &String::from_slice(&s.env, "test"),
+        &String::from_str(&s.env, "test"),
         &false,
     );
     assert_eq!(
@@ -208,7 +222,7 @@ fn pause_blocks_all_mutating_entrypoints() {
     // ==================== Registry ====================
     let res = s
         .client
-        .try_register_name(&borrower, &String::from_slice(&s.env, "test"));
+        .try_register_name(&borrower, &String::from_str(&s.env, "test"));
     assert_eq!(
         res,
         Err(Ok(Error::Paused)),
@@ -327,24 +341,26 @@ fn validate_policy_rejects_quorum_bps_above_basis_points() {
 #[test]
 fn propose_policy_update_rejects_every_invalid_bound() {
     let cases: [fn(&mut crate::types::LoanPolicy); 18] = [
-            |p| p.membership_contribution = 0,
-            |p| p.max_loan_duration = 0,
-            |p| p.min_interest_rate = 10_001,
-            |p| p.max_interest_rate = 10_001,
-            |p| { p.min_interest_rate = p.max_interest_rate + 1; },
-            |p| p.max_loan_to_treasury_ratio = 0,
-            |p| p.max_loan_to_treasury_ratio = 10_001,
-            |p| p.default_penalty_bps = 10_001,
-            |p| p.editing_period = 0,
-            |p| p.voting_period = 0,
-            |p| p.editing_period = 30 * 24 * 60 * 60 + 1,
-            |p| p.voting_period = 30 * 24 * 60 * 60 + 1,
-            |p| p.min_membership_duration = 30 * 24 * 60 * 60 + 1,
-            |p| p.cooldown_period = 30 * 24 * 60 * 60 + 1,
-            |p| p.default_grace_period = 30 * 24 * 60 * 60 + 1,
-            |p| p.treasury_threshold = 0,
-            |p| p.treasury_threshold = 10_001,
-            |p| p.quorum_bps = 10_001,
+        |p| p.membership_contribution = 0,
+        |p| p.max_loan_duration = 0,
+        |p| p.min_interest_rate = 10_001,
+        |p| p.max_interest_rate = 10_001,
+        |p| {
+            p.min_interest_rate = p.max_interest_rate + 1;
+        },
+        |p| p.max_loan_to_treasury_ratio = 0,
+        |p| p.max_loan_to_treasury_ratio = 10_001,
+        |p| p.default_penalty_bps = 10_001,
+        |p| p.editing_period = 0,
+        |p| p.voting_period = 0,
+        |p| p.editing_period = 30 * 24 * 60 * 60 + 1,
+        |p| p.voting_period = 30 * 24 * 60 * 60 + 1,
+        |p| p.min_membership_duration = 30 * 24 * 60 * 60 + 1,
+        |p| p.cooldown_period = 30 * 24 * 60 * 60 + 1,
+        |p| p.default_grace_period = 30 * 24 * 60 * 60 + 1,
+        |p| p.treasury_threshold = 0,
+        |p| p.treasury_threshold = 10_001,
+        |p| p.quorum_bps = 10_001,
     ];
     for mutate in cases {
         let s = setup(1);
@@ -450,4 +466,69 @@ fn get_version_returns_cargo_pkg_version() {
 fn test_bump_dao_ttl() {
     let s = setup(1);
     s.client.bump_dao_ttl();
+}
+
+// ==================== issue #236: token whitelist ====================
+
+#[test]
+fn token_whitelist_lifecycle() {
+    let s = setup(1);
+    let base = s.token.address.clone();
+    let issuer = Address::generate(&s.env);
+    let extra = s.env.register_stellar_asset_contract_v2(issuer).address();
+    let outsider = s.members.get(0).unwrap();
+
+    assert!(s.client.is_token_whitelisted(&base));
+    assert!(!s.client.is_token_whitelisted(&extra));
+    assert_eq!(
+        s.client.get_whitelisted_tokens(),
+        Vec::from_array(&s.env, [base.clone()])
+    );
+
+    assert_eq!(
+        s.client.try_propose_token_addition(&outsider, &extra),
+        Err(Ok(Error::NotAdmin))
+    );
+    assert_eq!(
+        s.client.try_propose_token_addition(&s.admin, &base),
+        Err(Ok(Error::TokenAlreadyWhitelisted))
+    );
+    assert_eq!(
+        s.client
+            .try_propose_token_addition(&s.admin, &Address::generate(&s.env)),
+        Err(Ok(Error::InvalidToken))
+    );
+    assert_eq!(
+        s.client.try_execute_token_addition(&s.admin, &extra),
+        Err(Ok(Error::NoPendingTokenAddition))
+    );
+
+    s.client.propose_token_addition(&s.admin, &extra);
+    assert_eq!(
+        s.client.try_execute_token_addition(&s.admin, &extra),
+        Err(Ok(Error::TimelockNotExpired))
+    );
+    advance(&s.env, TIMELOCK_DURATION);
+    s.client.execute_token_addition(&s.admin, &extra);
+    assert!(s.client.is_token_whitelisted(&extra));
+    assert_eq!(
+        s.client.get_whitelisted_tokens(),
+        Vec::from_array(&s.env, [base.clone(), extra.clone()])
+    );
+    assert_eq!(s.client.get_treasury_balance_in_asset(&extra), 0);
+
+    assert_eq!(
+        s.client.try_remove_token(&s.admin, &base),
+        Err(Ok(Error::CannotRemoveBaseToken))
+    );
+    s.client.remove_token(&s.admin, &extra);
+    assert!(!s.client.is_token_whitelisted(&extra));
+    assert_eq!(
+        s.client.get_whitelisted_tokens(),
+        Vec::from_array(&s.env, [base])
+    );
+    assert_eq!(
+        s.client.try_remove_token(&s.admin, &extra),
+        Err(Ok(Error::TokenNotWhitelisted))
+    );
 }

@@ -120,9 +120,7 @@ fn reveal_with_correct_salt_tallies_vote() {
 
     // Correct salt reveals cleanly.
     s.client.reveal_treasury_vote(&voter, &pid, &true, &salt);
-    assert!(s
-        .client
-        .has_voted(&ProposalKind::Treasury, &pid, &voter));
+    assert!(s.client.has_voted(&ProposalKind::Treasury, &pid, &voter));
 }
 
 #[test]
@@ -144,7 +142,9 @@ fn reveal_with_mismatched_salt_returns_commitment_mismatch() {
 
     advance(&s.env, VOTING_PERIOD + 1);
 
-    let res = s.client.try_reveal_treasury_vote(&voter, &pid, &true, &wrong_salt);
+    let res = s
+        .client
+        .try_reveal_treasury_vote(&voter, &pid, &true, &wrong_salt);
     assert_eq!(res, Err(Ok(Error::CommitmentMismatch)));
 }
 
@@ -167,6 +167,8 @@ fn reveal_with_wrong_support_returns_commitment_mismatch() {
     advance(&s.env, VOTING_PERIOD + 1);
 
     // Committed true but reveals false — hash mismatch.
-    let res = s.client.try_reveal_treasury_vote(&voter, &pid, &false, &salt);
+    let res = s
+        .client
+        .try_reveal_treasury_vote(&voter, &pid, &false, &salt);
     assert_eq!(res, Err(Ok(Error::CommitmentMismatch)));
 }

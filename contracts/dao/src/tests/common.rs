@@ -190,3 +190,20 @@ pub fn refill_treasury(s: &Setup) {
     token::StellarAssetClient::new(&s.env, &s.token.address).mint(&m, &MINT);
     s.client.register_member(&m);
 }
+
+/// Registers a second Stellar asset, whitelists it through the timelocked
+/// admin flow and seeds the DAO treasury with `funding` of it (#236).
+pub fn whitelist_second_asset<'a>(s: &Setup<'a>, funding: i128) -> token::Client<'a> {
+    let issuer = Address::generate(&s.env);
+    let asset = s.env.register_stellar_asset_contract_v2(issuer).address();
+    s.client.propose_token_addition(&s.admin, &asset);
+    advance(&s.env, crate::admin::TIMELOCK_DURATION);
+    s.client.execute_token_addition(&s.admin, &asset);
+    token::StellarAssetClient::new(&s.env, &asset).mint(&s.client.address, &funding);
+    token::Client::new(&s.env, &asset)
+}
+
+/// Mints `amount` of `asset` to `to`.
+pub fn mint_asset(s: &Setup, asset: &Address, to: &Address, amount: i128) {
+    token::StellarAssetClient::new(&s.env, asset).mint(to, &amount);
+}

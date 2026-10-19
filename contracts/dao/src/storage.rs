@@ -57,6 +57,19 @@ pub enum DataKey {
     Commit(u32, Address),
     TotalContributions,
     Delegation(Address),
+    // ---- multi-token treasury (#236) ----
+    /// Present (and `true`) while an extra asset is whitelisted. The base
+    /// token is implicitly whitelisted and never stored here.
+    TokenWhitelisted(Address),
+    /// Extra whitelisted assets, in the order they were added.
+    WhitelistedTokens,
+    /// Earliest timestamp a proposed asset addition may be executed.
+    PendingTokenAddition(Address),
+    /// Asset a loan proposal (and the loan it becomes, which shares its id)
+    /// is denominated in. Absent means the base token.
+    LoanAsset(u32),
+    /// Asset a treasury proposal pays out in. Absent means the base token.
+    TreasuryAsset(u32),
 }
 
 pub fn extend_instance(env: &Env) {
@@ -428,5 +441,117 @@ pub fn get_delegation(env: &Env, member: &Address) -> Option<Address> {
 pub fn set_delegation(env: &Env, member: &Address, delegatee: &Address) {
     let key = DataKey::Delegation(member.clone());
     env.storage().persistent().set(&key, delegatee);
+    extend_persistent(env, &key);
+}
+
+// ---------- multi-token treasury (#236) ----------
+
+/// The base token is always whitelisted; any other asset only while its
+/// `TokenWhitelisted` entry exists.
+pub fn is_token_whitelisted(env: &Env, token: &Address) -> bool {
+    let base: Option<Address> = env.storage().instance().get(&DataKey::Token);
+    if base.as_ref() == Some(token) {
+        return true;
+    }
+    let key = DataKey::TokenWhitelisted(token.clone());
+    let listed = env.storage().persistent().has(&key);
+    if listed {
+        extend_persistent(env, &key);
+    }
+    listed
+}
+
+/// Adds (`true`) or removes (`false`) an extra asset, keeping the
+/// `WhitelistedTokens` list in step. Idempotent in both directions.
+pub fn set_token_whitelisted(env: &Env, token: &Address, whitelisted: bool) {
+    let key = DataKey::TokenWhitelisted(token.clone());
+    let mut tokens: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&DataKey::WhitelistedTokens)
+        .unwrap_or_else(|| Vec::new(env));
+    if whitelisted {
+        env.storage().persistent().set(&key, &true);
+        extend_persistent(env, &key);
+        if !tokens.contains(token) {
+            tokens.push_back(token.clone());
+        }
+    } else {
+        env.storage().persistent().remove(&key);
+        if let Some(i) = tokens.first_index_of(token) {
+            tokens.remove(i);
+        }
+    }
+    env.storage()
+        .persistent()
+        .set(&DataKey::WhitelistedTokens, &tokens);
+    extend_persistent(env, &DataKey::WhitelistedTokens);
+}
+
+/// Every accepted asset: the base token first, then extras in insertion order.
+pub fn get_whitelisted_tokens(env: &Env) -> Vec<Address> {
+    let mut all = Vec::new(env);
+    if let Some(base) = env.storage().instance().get::<_, Address>(&DataKey::Token) {
+        all.push_back(base);
+    }
+    let key = DataKey::WhitelistedTokens;
+    if let Some(extra) = env.storage().persistent().get::<_, Vec<Address>>(&key) {
+        extend_persistent(env, &key);
+        all.append(&extra);
+    }
+    all
+}
+
+pub fn get_pending_token_addition(env: &Env, token: &Address) -> Option<u64> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::PendingTokenAddition(token.clone()))
+}
+
+pub fn set_pending_token_addition(env: &Env, token: &Address, execution_time: u64) {
+    let key = DataKey::PendingTokenAddition(token.clone());
+    env.storage().persistent().set(&key, &execution_time);
+    extend_persistent(env, &key);
+}
+
+pub fn remove_pending_token_addition(env: &Env, token: &Address) {
+    env.storage()
+        .persistent()
+        .remove(&DataKey::PendingTokenAddition(token.clone()));
+}
+
+/// Asset of loan proposal / loan `id`; the base token unless recorded.
+pub fn get_loan_asset(env: &Env, id: u32) -> Address {
+    let key = DataKey::LoanAsset(id);
+    match env.storage().persistent().get(&key) {
+        Some(asset) => {
+            extend_persistent(env, &key);
+            asset
+        }
+        None => get_token(env),
+    }
+}
+
+pub fn set_loan_asset(env: &Env, id: u32, asset: &Address) {
+    let key = DataKey::LoanAsset(id);
+    env.storage().persistent().set(&key, asset);
+    extend_persistent(env, &key);
+}
+
+/// Asset of treasury proposal `id`; the base token unless recorded.
+pub fn get_treasury_asset(env: &Env, id: u32) -> Address {
+    let key = DataKey::TreasuryAsset(id);
+    match env.storage().persistent().get(&key) {
+        Some(asset) => {
+            extend_persistent(env, &key);
+            asset
+        }
+        None => get_token(env),
+    }
+}
+
+pub fn set_treasury_asset(env: &Env, id: u32, asset: &Address) {
+    let key = DataKey::TreasuryAsset(id);
+    env.storage().persistent().set(&key, asset);
     extend_persistent(env, &key);
 }

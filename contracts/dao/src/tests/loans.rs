@@ -832,3 +832,119 @@ fn member_loan_stats_unknown_member_rejected() {
         Err(Ok(Error::NotMember))
     );
 }
+
+// ==================== issue #236: loans in a second asset ====================
+
+#[test]
+fn loan_in_second_asset_disburses_and_repays_in_that_asset() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+    let asset = whitelist_second_asset(&s, 10_000);
+    let base_treasury = s.client.get_treasury_balance();
+
+    // Sized against the second asset's treasury, not the base token's 3_000.
+    let pid = s
+        .client
+        .request_loan_in_asset(&borrower, &4_000, &asset.address, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid, &true);
+
+    let loan = s.client.get_loan(&pid).unwrap();
+    assert_eq!(loan.status, LoanStatus::Active);
+    assert_eq!(asset.balance(&borrower), 4_000);
+    assert_eq!(
+        s.client.get_treasury_balance_in_asset(&asset.address),
+        6_000
+    );
+    assert_eq!(s.client.get_treasury_balance(), base_treasury);
+
+    // Repaying names the asset, and only the loan's own asset is accepted.
+    let wrong = s
+        .client
+        .try_repay_loan_in_asset(&borrower, &pid, &s.token.address);
+    assert_eq!(wrong, Err(Ok(Error::AssetMismatch)));
+
+    mint_asset(&s, &asset.address, &borrower, loan.total_repayment);
+    s.client
+        .repay_loan_in_asset(&borrower, &pid, &asset.address);
+
+    assert_eq!(s.client.get_loan(&pid).unwrap().status, LoanStatus::Repaid);
+    assert_eq!(
+        s.client.get_treasury_balance_in_asset(&asset.address),
+        6_000 + loan.total_repayment
+    );
+    // Interest in a non-base asset isn't distributed as base-token yield.
+    assert_eq!(s.client.get_treasury_balance(), base_treasury);
+    assert!(!s.client.get_member(&borrower).unwrap().has_active_loan);
+}
+
+#[test]
+fn loan_in_non_whitelisted_asset_rejected() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let issuer = Address::generate(&s.env);
+    let unknown = s.env.register_stellar_asset_contract_v2(issuer).address();
+
+    let res = s
+        .client
+        .try_request_loan_in_asset(&borrower, &100, &unknown, &None);
+    assert_eq!(res, Err(Ok(Error::TokenNotWhitelisted)));
+}
+
+#[test]
+fn base_token_loan_repays_through_repay_loan_in_asset() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+
+    let pid = s
+        .client
+        .request_loan_in_asset(&borrower, &1_000, &s.token.address, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid, &true);
+
+    assert_eq!(
+        s.client
+            .try_repay_loan_in_asset(&borrower, &99, &s.token.address),
+        Err(Ok(Error::LoanNotFound))
+    );
+    s.client
+        .repay_loan_in_asset(&borrower, &pid, &s.token.address);
+    assert_eq!(s.client.get_loan(&pid).unwrap().status, LoanStatus::Repaid);
+}
+
+#[test]
+fn loan_in_removed_asset_can_still_be_repaid() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+    let asset = whitelist_second_asset(&s, 10_000);
+
+    let pid = s
+        .client
+        .request_loan_in_asset(&borrower, &1_000, &asset.address, &None);
+    // Editing re-quotes against the same asset's treasury.
+    s.client.edit_loan_proposal(&borrower, &pid, &2_000);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid, &true);
+    assert_eq!(asset.balance(&borrower), 2_000);
+
+    s.client.remove_token(&s.admin, &asset.address);
+    assert_eq!(
+        s.client
+            .try_request_loan_in_asset(&v1, &100, &asset.address, &None),
+        Err(Ok(Error::TokenNotWhitelisted))
+    );
+
+    let loan = s.client.get_loan(&pid).unwrap();
+    mint_asset(&s, &asset.address, &borrower, loan.total_repayment);
+    s.client.repay_loan(&borrower, &pid);
+    assert_eq!(s.client.get_loan(&pid).unwrap().status, LoanStatus::Repaid);
+}

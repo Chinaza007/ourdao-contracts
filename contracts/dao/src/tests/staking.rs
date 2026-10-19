@@ -78,9 +78,9 @@ fn rejected_unstake_transfer_leaves_stake_storage_unchanged() {
     assert!(result.is_err());
 
     assert_eq!(s.client.get_stake(&member), 500);
-    let total_staked = s
-        .env
-        .as_contract(&s.client.address, || crate::storage::get_total_staked(&s.env));
+    let total_staked = s.env.as_contract(&s.client.address, || {
+        crate::storage::get_total_staked(&s.env)
+    });
     assert_eq!(total_staked, 500);
 }
 
@@ -423,7 +423,10 @@ fn voting_weight_at_exact_cap() {
 #[test]
 fn stake_threshold_constants_are_discoverable() {
     let s = setup(1);
-    assert_eq!(s.client.get_stake_weight_unit(), crate::util::STAKE_WEIGHT_UNIT);
+    assert_eq!(
+        s.client.get_stake_weight_unit(),
+        crate::util::STAKE_WEIGHT_UNIT
+    );
     assert_eq!(s.client.get_max_stake_bonus(), crate::util::MAX_STAKE_BONUS);
 }
 

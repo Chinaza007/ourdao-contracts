@@ -155,10 +155,10 @@ fn bench_exit_dao_scaling() {
         let s = setup(size);
         let m = s.members.get(0).unwrap();
 
-        s.env.budget().reset_unlimited();
-        let cpu_before = s.env.budget().cpu_instruction_cost();
+        s.env.cost_estimate().budget().reset_unlimited();
+        let cpu_before = s.env.cost_estimate().budget().cpu_instruction_cost();
         s.client.exit_dao(&m);
-        let cpu_after = s.env.budget().cpu_instruction_cost();
+        let cpu_after = s.env.cost_estimate().budget().cpu_instruction_cost();
 
         let cost = cpu_after - cpu_before;
 
