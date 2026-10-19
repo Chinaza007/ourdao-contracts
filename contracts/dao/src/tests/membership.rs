@@ -41,6 +41,21 @@ fn exit_returns_share() {
     assert!(!s.client.is_member(&m));
 }
 
+// ==================== issue #341: get_delegate view ====================
+#[test]
+fn get_delegate_reports_delegation_and_none_otherwise() {
+    let s = setup(2);
+    let a = s.members.get(0).unwrap();
+    let b = s.members.get(1).unwrap();
+
+    assert_eq!(s.client.get_delegate(&a), None);
+
+    s.client.delegate_vote(&a, &b);
+    assert_eq!(s.client.get_delegate(&a), Some(b.clone()));
+    // Delegation is one-way: the delegatee has not delegated anything.
+    assert_eq!(s.client.get_delegate(&b), None);
+}
+
 // ==================== issue #4: yield accumulator ====================
 #[test]
 fn yield_accumulator_join_claim_exit_rejoin() {

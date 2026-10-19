@@ -526,6 +526,12 @@ impl OurDao {
         (acc - snap).max(0)
     }
 
+    /// Returns the address `delegator` has delegated their vote to, or `None`
+    /// if they have never called `delegate_vote`.
+    pub fn get_delegate(env: Env, delegator: Address) -> Option<Address> {
+        storage::get_delegation(&env, &delegator)
+    }
+
     /// Returns whether `voter` has cast a (possibly not-yet-revealed) vote
     /// on the given proposal. For public (non-private) proposals this is a
     /// simple check against the vote record. For commit-reveal treasury
