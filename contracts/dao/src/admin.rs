@@ -69,10 +69,11 @@ pub fn initialize(
     if admins.is_empty() {
         return Err(Error::NotAuthorized);
     }
-    // Duplicates would let `remove_admin` (which drops every matching entry)
-    // leave the contract with zero admins despite its last-admin guard (#42).
+    // Admins must be unique: `remove_admin` relies on it, and duplicates once
+    // let it leave the contract with zero admins (#42). `first_index_of` is a
+    // single host call per admin, so this check stays linear.
     for (i, a) in admins.iter().enumerate() {
-        if admins.iter().skip(i + 1).any(|b| b == a) {
+        if admins.first_index_of(&a) != Some(i as u32) {
             return Err(Error::AlreadyAdmin);
         }
     }
@@ -101,7 +102,7 @@ pub fn initialize(
 pub fn add_admin(env: &Env, caller: Address, admin: Address) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     let mut admins = storage::get_admins(env);
-    if admins.iter().any(|a| a == admin) {
+    if admins.contains(&admin) {
         return Err(Error::AlreadyAdmin);
     }
     admins.push_back(admin.clone());
@@ -114,23 +115,14 @@ pub fn add_admin(env: &Env, caller: Address, admin: Address) -> Result<(), Error
 #[allow(deprecated)]
 pub fn remove_admin(env: &Env, caller: Address, admin: Address) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
-    let admins = storage::get_admins(env);
+    let mut admins = storage::get_admins(env);
     if admins.len() <= 1 {
         return Err(Error::CannotRemoveLastAdmin);
     }
-    let mut next = Vec::new(env);
-    let mut found = false;
-    for a in admins.iter() {
-        if a == admin {
-            found = true;
-        } else {
-            next.push_back(a);
-        }
-    }
-    if !found {
-        return Err(Error::NotAdmin);
-    }
-    storage::set_admins(env, &next);
+    // `initialize` and `add_admin` reject duplicates, so at most one entry matches.
+    let i = admins.first_index_of(&admin).ok_or(Error::NotAdmin)?;
+    admins.remove(i);
+    storage::set_admins(env, &admins);
     extend_instance(env);
     env.events().publish((symbol_short!("admin_rem"),), admin);
     Ok(())

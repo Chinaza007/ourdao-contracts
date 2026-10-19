@@ -1,5 +1,5 @@
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Bytes, BytesN, Env, String, Vec};
+use soroban_sdk::{Address, Bytes, BytesN, Env, String, Symbol, Vec};
 
 use super::common::*;
 use crate::admin::TIMELOCK_DURATION;
@@ -531,4 +531,66 @@ fn token_whitelist_lifecycle() {
         s.client.try_remove_token(&s.admin, &extra),
         Err(Ok(Error::TokenNotWhitelisted))
     );
+}
+
+// Admin list handling uses host-side lookups (#357); the list stays a set.
+#[test]
+fn initialize_rejects_non_adjacent_duplicate_admins() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let token_id = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
+    let client = OurDaoClient::new(&env, &env.register(OurDao, ()));
+
+    let a = Address::generate(&env);
+    let b = Address::generate(&env);
+    let admins = Vec::from_array(&env, [a.clone(), b, a]);
+    let res = client.try_initialize(&admins, &5_100u32, &FEE, &token_id, &policy());
+    assert_eq!(res, Err(Ok(Error::AlreadyAdmin)));
+}
+
+#[test]
+fn remove_admin_drops_only_the_target_and_keeps_order() {
+    let s = setup(0);
+    let second = Address::generate(&s.env);
+    let third = Address::generate(&s.env);
+    s.client.add_admin(&s.admin, &second);
+    s.client.add_admin(&s.admin, &third);
+    assert_eq!(
+        s.client.try_add_admin(&s.admin, &second),
+        Err(Ok(Error::AlreadyAdmin))
+    );
+
+    s.client.remove_admin(&s.admin, &second);
+    assert_eq!(
+        s.client.get_admins(),
+        Vec::from_array(&s.env, [s.admin.clone(), third])
+    );
+    assert_eq!(
+        s.client.try_remove_admin(&s.admin, &second),
+        Err(Ok(Error::NotAdmin))
+    );
+}
+
+// `DataKey` left the contract spec (#357); its ledger encoding must not move.
+#[test]
+fn storage_keys_keep_their_ledger_encoding() {
+    let s = setup(1);
+    let member = s.members.get(0).unwrap();
+    let admins = s.client.get_admins();
+    s.env.as_contract(&s.client.address, || {
+        let stored: Vec<Address> = s
+            .env
+            .storage()
+            .instance()
+            .get(&(Symbol::new(&s.env, "Admins"),))
+            .unwrap();
+        assert_eq!(stored, admins);
+        assert!(s
+            .env
+            .storage()
+            .persistent()
+            .has(&(Symbol::new(&s.env, "Member"), member)));
+    });
 }

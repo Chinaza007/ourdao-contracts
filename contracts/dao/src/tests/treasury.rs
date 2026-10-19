@@ -268,3 +268,35 @@ fn cancel_treasury_proposal_emits_event_and_sets_cancelled_status() {
     let prop = s.client.get_treasury_proposal(&pid).unwrap();
     assert_eq!(prop.status, ProposalStatus::Cancelled);
 }
+
+// `tally` writes the proposal once, after execution is attempted (#357): the
+// final status and vote counts must still be persisted on both outcomes.
+#[test]
+fn tally_persists_status_and_votes_whether_executed_or_waiting() {
+    let s = setup(4); // treasury 4000, 3 of 4 votes required
+    let p = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+    let dest = Address::generate(&s.env);
+    let reason = String::from_str(&s.env, "grant");
+
+    let paid = s
+        .client
+        .propose_treasury_withdrawal(&p, &2_000, &dest, &reason, &false);
+    let parked = s
+        .client
+        .propose_treasury_withdrawal(&p, &2_500, &dest, &reason, &false);
+    for voter in [&p, &v1, &v2] {
+        s.client.vote_on_treasury_proposal(voter, &paid, &true);
+        s.client.vote_on_treasury_proposal(voter, &parked, &true);
+    }
+
+    let executed = s.client.get_treasury_proposal(&paid).unwrap();
+    assert_eq!(executed.status, ProposalStatus::Executed);
+    assert_eq!((executed.for_votes, executed.votes_cast), (3, 3));
+
+    let waiting = s.client.get_treasury_proposal(&parked).unwrap();
+    assert_eq!(waiting.status, ProposalStatus::ApprovedPendingDisbursement);
+    assert_eq!((waiting.for_votes, waiting.votes_cast), (3, 3));
+    assert_eq!(s.token.balance(&dest), 2_000);
+}

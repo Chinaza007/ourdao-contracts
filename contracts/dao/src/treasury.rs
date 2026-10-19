@@ -139,19 +139,18 @@ pub fn tally(
         (proposal.id, voter.clone(), support),
     );
 
-    let required = util::required_votes(
-        storage::get_active_members(env),
-        proposal.treasury_threshold,
-    );
+    let active_members = storage::get_active_members(env);
+    let required = util::required_votes(active_members, proposal.treasury_threshold);
     if proposal.for_votes >= required {
+        // Persisted once, below: `execute` reads nothing back from storage,
+        // and a failed transfer traps the whole transaction anyway.
         proposal.status = ProposalStatus::ApprovedPendingDisbursement;
-        storage::set_treasury_proposal(env, &proposal);
         if execute(env, &mut proposal).is_err() {
             env.events()
                 .publish((symbol_short!("tre_wait"),), (proposal.id, proposal.amount));
         }
     } else {
-        let remaining = storage::get_active_members(env).saturating_sub(proposal.votes_cast);
+        let remaining = active_members.saturating_sub(proposal.votes_cast);
         let max_remaining = remaining as i128 * (1 + util::MAX_STAKE_BONUS);
         if proposal.for_votes + max_remaining < required {
             proposal.status = ProposalStatus::Rejected;

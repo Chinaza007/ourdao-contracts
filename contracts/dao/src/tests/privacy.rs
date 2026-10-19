@@ -172,3 +172,31 @@ fn reveal_with_wrong_support_returns_commitment_mismatch() {
         .try_reveal_treasury_vote(&voter, &pid, &false, &salt);
     assert_eq!(res, Err(Ok(Error::CommitmentMismatch)));
 }
+
+// Known-answer vectors pin the commitment preimage, `[support] ++ salt`, that
+// off-chain clients must reproduce. Computed independently with Python:
+// hashlib.sha256(bytes([support]) + salt).hexdigest()
+#[test]
+fn commitment_matches_known_answer_vectors() {
+    let env = soroban_sdk::Env::default();
+    let cases: [(bool, [u8; 32], &str); 2] = [
+        (
+            true,
+            [7u8; 32],
+            "d3907c0247e7e98b72338a00d87244248df71eb313589da290d45adfba44e6d2",
+        ),
+        (
+            false,
+            core::array::from_fn(|i| i as u8),
+            "699cacdb4c39d8e0bb1223352765a7f7acdc51dec6694f7b54c3d0a47f0cc409",
+        ),
+    ];
+    for (support, salt, hex) in cases {
+        let mut expected = [0u8; 32];
+        for (i, byte) in expected.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap();
+        }
+        let got = compute_commitment(&env, support, &BytesN::from_array(&env, &salt));
+        assert_eq!(got.to_array(), expected);
+    }
+}

@@ -67,7 +67,7 @@ pub fn require_not_paused(env: &Env) -> Result<(), Error> {
 }
 
 pub fn is_admin(env: &Env, who: &Address) -> bool {
-    storage::get_admins(env).iter().any(|a| &a == who)
+    storage::get_admins(env).contains(who)
 }
 
 pub fn is_pauser(env: &Env, who: &Address) -> bool {
