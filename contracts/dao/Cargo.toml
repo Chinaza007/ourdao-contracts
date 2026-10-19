@@ -10,6 +10,10 @@ repository = { workspace = true }
 crate-type = ["cdylib", "rlib"]
 doctest = false
 
+[features]
+# Enables the budget scaling benchmark run by scripts/bench-cost.sh.
+bench-budget = []
+
 [dependencies]
 soroban-sdk = { workspace = true }
 

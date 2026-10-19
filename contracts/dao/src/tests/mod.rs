@@ -1,5 +1,5 @@
 mod admin;
-mod common;
+pub(crate) mod common;
 mod docs;
 mod loans;
 mod membership;

@@ -26,6 +26,9 @@ mod util;
 #[cfg(test)]
 mod tests;
 
+#[cfg(all(test, feature = "bench-budget"))]
+mod bench;
+
 use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, Vec};
 
 pub use error::Error;

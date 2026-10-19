@@ -57,6 +57,7 @@ pub fn register_member(env: &Env, member: Address) -> Result<(), Error> {
         storage::set_total_members(env, storage::get_total_members(env) + 1);
     }
     storage::set_active_members(env, storage::get_active_members(env) + 1);
+    storage::set_active_contributions(env, storage::get_active_contributions(env) + fee);
     extend_instance(env);
 
     // Interaction last (checks-effects-interactions): the fee transfer only
@@ -102,8 +103,15 @@ pub fn exit_dao(env: &Env, member: Address) -> Result<(), Error> {
 
     record.status = MemberStatus::Inactive;
     record.share_balance = 0;
+    // `share` was computed above against the total that still included this
+    // member; only now is it safe to remove their contribution (#353).
+    let exiting_contribution = record.contribution;
     storage::set_member(env, &record);
     storage::set_active_members(env, storage::get_active_members(env) - 1);
+    storage::set_active_contributions(
+        env,
+        storage::get_active_contributions(env) - exiting_contribution,
+    );
     extend_instance(env);
 
     env.events()
@@ -148,18 +156,9 @@ pub fn calculate_exit_share(env: &Env, member: &Address) -> i128 {
         Some(m) if m.status == MemberStatus::ActiveMember => m,
         _ => return 0,
     };
-    let total_contributions = total_active_contributions(env);
+    let total_contributions = storage::get_active_contributions(env);
     let treasury = util::treasury_balance(env);
     share_from_contributions(treasury, record.contribution, total_contributions)
-}
-
-fn total_active_contributions(env: &Env) -> i128 {
-    storage::get_members(env)
-        .iter()
-        .filter_map(|addr| storage::get_member(env, &addr))
-        .filter(|m| m.status == MemberStatus::ActiveMember)
-        .map(|m| m.contribution)
-        .sum()
 }
 
 fn compute_pending_yield(env: &Env, addr: &Address) -> i128 {

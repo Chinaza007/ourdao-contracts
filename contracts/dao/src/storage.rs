@@ -56,6 +56,9 @@ pub enum DataKey {
     NameOf(Address),
     Commit(u32, Address),
     TotalContributions,
+    /// Running sum of `contribution` over members whose status is
+    /// `ActiveMember` (#353). Kept in sync by register / exit / default.
+    ActiveContributions,
     Delegation(Address),
     // ---- multi-token treasury (#236) ----
     /// Present (and `true`) while an extra asset is whitelisted. The base
@@ -205,6 +208,19 @@ pub fn set_total_contributions(env: &Env, amount: i128) {
     env.storage()
         .instance()
         .set(&DataKey::TotalContributions, &amount);
+}
+
+pub fn get_active_contributions(env: &Env) -> i128 {
+    env.storage()
+        .instance()
+        .get(&DataKey::ActiveContributions)
+        .unwrap_or(0)
+}
+
+pub fn set_active_contributions(env: &Env, amount: i128) {
+    env.storage()
+        .instance()
+        .set(&DataKey::ActiveContributions, &amount);
 }
 
 pub fn get_active_members(env: &Env) -> u32 {

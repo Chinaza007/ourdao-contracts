@@ -172,3 +172,40 @@ fn reveal_with_wrong_support_returns_commitment_mismatch() {
         .try_reveal_treasury_vote(&voter, &pid, &false, &salt);
     assert_eq!(res, Err(Ok(Error::CommitmentMismatch)));
 }
+
+// ===========================================================================
+// Issue #356: a revealed commitment must be removed from storage
+// ===========================================================================
+
+#[test]
+fn reveal_removes_commitment_from_storage() {
+    let s = setup(3);
+    let proposer = s.members.get(0).unwrap();
+    let voter = s.members.get(1).unwrap();
+    let dest = Address::generate(&s.env);
+
+    let reason = String::from_str(&s.env, "private grant");
+    let pid = s
+        .client
+        .propose_treasury_withdrawal(&proposer, &300, &dest, &reason, &true);
+
+    let salt = BytesN::from_array(&s.env, &[7u8; 32]);
+    let commitment = compute_commitment(&s.env, true, &salt);
+    s.client.commit_treasury_vote(&voter, &pid, &commitment);
+
+    let has_commit = |s: &Setup| {
+        s.env.as_contract(&s.client.address, || {
+            crate::storage::get_commit(&s.env, pid, &voter).is_some()
+        })
+    };
+    assert!(has_commit(&s));
+
+    advance(&s.env, VOTING_PERIOD + 1);
+    s.client.reveal_treasury_vote(&voter, &pid, &true, &salt);
+
+    assert!(!has_commit(&s), "commitment key must be gone after reveal");
+    // The vote still counts, and a second reveal is rejected.
+    assert!(s.client.has_voted(&ProposalKind::Treasury, &pid, &voter));
+    let again = s.client.try_reveal_treasury_vote(&voter, &pid, &true, &salt);
+    assert_eq!(again, Err(Ok(Error::AlreadyRevealed)));
+}

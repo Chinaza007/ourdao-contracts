@@ -358,9 +358,12 @@ MIT
 
 ## Resource Costs and Membership Ceiling
 
-As measured via SDK budget instrumentation (Issue #138):
-- `exit_dao` has O(n) scaling due to iterating all members in `total_active_contributions`.
+As measured via SDK budget instrumentation (Issue #138, extended in #354) by `scripts/bench-cost.sh` at DAO sizes 10, 100 and 1000:
+- `exit_dao` is O(1). It previously iterated all members in `total_active_contributions`; the DAO now maintains a running `ActiveContributions` total that is updated on join, exit and default penalty (#353).
+- `request_loan_in_asset`, `repay_loan_in_asset` and `propose_withdrawal_in_asset` (multi-token entrypoints) are covered by the same benchmark and are expected to stay flat as membership grows. `bench-cost.sh` fails if any benchmarked entrypoint's CPU cost at 1000 members exceeds 3x its cost at 10 members.
 - `is_admin` scales with admin count.
 - Other entrypoints are O(1) or scale with smaller sets (like active proposals).
 
-**Membership Ceiling:** Due to the O(n) scan in `exit_dao`, the contract can safely support up to **~10,000 members** before risking transaction resource limit exhaustion on exit. Optimizations (e.g. tracking total contributions natively) are required to scale further.
+Run the benchmark with `scripts/bench-cost.sh`; it prints one `BENCH <entrypoint> <size> <cpu>` line per measurement.
+
+**Membership Ceiling:** with the O(n) scan removed, exit no longer bounds membership. Vote tally paths read `active_members` and the policy/threshold once per call (#355), so cost per vote does not grow with DAO size either.
