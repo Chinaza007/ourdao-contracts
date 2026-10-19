@@ -83,7 +83,7 @@ contracts/dao/
     types.rs       # data model + constants
     error.rs       # contract error codes
     util.rs        # token client, auth guards, vote math
-    test.rs        # full test suite (19 tests)
+    tests/         # test suite, one module per contract module (`cargo test`)
   scripts/
     deploy-testnet.sh   # builds, deploys AND initializes; --dry-run, guarded against non-testnet
 ```

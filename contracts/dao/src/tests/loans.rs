@@ -948,3 +948,48 @@ fn loan_in_removed_asset_can_still_be_repaid() {
     s.client.repay_loan(&borrower, &pid);
     assert_eq!(s.client.get_loan(&pid).unwrap().status, LoanStatus::Repaid);
 }
+
+// ==================== issue #185: cancel during editing (migrated from test.rs) ====================
+
+#[test]
+fn cancel_loan_proposal_emits_event_and_sets_cancelled_status() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    let prop = s.client.get_loan_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Pending);
+    assert_eq!(prop.phase, ProposalPhase::Editing);
+
+    s.client.cancel_loan_proposal(&borrower, &pid);
+    // Events only cover the latest invocation, so check before reading state.
+    assert_prop_cancelled_event(&s.env, pid);
+
+    let prop = s.client.get_loan_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Cancelled);
+    assert_eq!(prop.phase, ProposalPhase::Expired);
+}
+
+#[test]
+fn cancel_loan_proposal_after_editing_period_rejected() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + 1);
+
+    let res = s.client.try_cancel_loan_proposal(&borrower, &pid);
+    assert_eq!(res, Err(Ok(Error::NotInEditingPhase)));
+}
+
+#[test]
+fn cancel_loan_proposal_by_non_proposer_rejected() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let other = s.members.get(1).unwrap();
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+
+    let res = s.client.try_cancel_loan_proposal(&other, &pid);
+    assert_eq!(res, Err(Ok(Error::NotBorrower)));
+}

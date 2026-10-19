@@ -207,3 +207,27 @@ pub fn whitelist_second_asset<'a>(s: &Setup<'a>, funding: i128) -> token::Client
 pub fn mint_asset(s: &Setup, asset: &Address, to: &Address, amount: i128) {
     token::StellarAssetClient::new(&s.env, asset).mint(to, &amount);
 }
+
+/// Asserts the most recent `prop_canc` event carries `(proposal_id, now)` as
+/// its data under a single `prop_canc` topic.
+pub fn assert_prop_cancelled_event(env: &Env, proposal_id: u32) {
+    let all = env.events().all();
+    let event = all
+        .events()
+        .iter()
+        .rev()
+        .find(|e| {
+            let ContractEventBody::V0(body) = &e.body;
+            matches!(body.topics.first(), Some(ScVal::Symbol(sym)) if sym.0.to_utf8_string_lossy() == "prop_canc")
+        })
+        .expect("prop_canc event not found")
+        .clone();
+    let ContractEventBody::V0(body) = &event.body;
+    assert_eq!(body.topics.len(), 1);
+    let ScVal::Vec(Some(data)) = &body.data else {
+        panic!("unexpected prop_canc data: {:?}", body.data);
+    };
+    assert_eq!(data.len(), 2);
+    assert_eq!(data[0], ScVal::U32(proposal_id));
+    assert_eq!(data[1], ScVal::U64(env.ledger().timestamp()));
+}

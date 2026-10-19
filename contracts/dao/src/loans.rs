@@ -651,7 +651,7 @@ pub fn mark_loan_defaulted(env: &Env, loan_id: u32) -> Result<(), Error> {
 /// or exit). Their pending yield is `(accumulator - snapshot) * 1`.
 ///
 /// `pub(crate)` (rather than private) solely so the property tests in
-/// `test.rs` can drive it directly with arbitrary `interest` values instead
+/// `tests/properties.rs` can drive it directly with arbitrary `interest` values instead
 /// of only the ones reachable through a real loan's computed interest.
 #[allow(deprecated)]
 pub(crate) fn distribute_interest(env: &Env, interest: i128) {

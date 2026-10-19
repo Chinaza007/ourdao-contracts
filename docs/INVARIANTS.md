@@ -17,8 +17,8 @@ less than or equal to the total `interest` passed to `distribute_interest`.
 Specifically, each member receives exactly `interest / active_members` and the
 remainder (`interest % active_members`) stays in the treasury.
 
-**Tested:** ✅ `proptests::distributed_interest_never_exceeds_collected`
-(`contracts/dao/src/test.rs`)
+**Tested:** ✅ `tests::properties::distributed_interest_never_exceeds_collected`
+(`contracts/dao/src/tests/properties.rs`)
 
 ---
 
@@ -28,8 +28,8 @@ remainder (`interest % active_members`) stays in the treasury.
 total treasury, so paying out every member simultaneously can never leave the
 treasury in deficit.
 
-**Tested:** ✅ `proptests::exit_shares_never_exceed_treasury`
-(`contracts/dao/src/test.rs`)
+**Tested:** ✅ `tests::properties::exit_shares_never_exceed_treasury`
+(`contracts/dao/src/tests/properties.rs`)
 
 ---
 

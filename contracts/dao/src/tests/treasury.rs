@@ -245,3 +245,26 @@ fn withdrawal_in_asset_rejects_unlisted_or_unfunded_asset() {
     );
     assert_eq!(res, Err(Ok(Error::InsufficientTreasury)));
 }
+
+// ==================== issue #185: cancel during editing (migrated from test.rs) ====================
+
+#[test]
+fn cancel_treasury_proposal_emits_event_and_sets_cancelled_status() {
+    let s = setup(3);
+    let proposer = s.members.get(0).unwrap();
+    let dest = Address::generate(&s.env);
+    let reason = String::from_str(&s.env, "grant");
+
+    let pid = s
+        .client
+        .propose_treasury_withdrawal(&proposer, &600, &dest, &reason, &false);
+    let prop = s.client.get_treasury_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Pending);
+
+    s.client.cancel_treasury_proposal(&proposer, &pid);
+    // Events only cover the latest invocation, so check before reading state.
+    assert_prop_cancelled_event(&s.env, pid);
+
+    let prop = s.client.get_treasury_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Cancelled);
+}
