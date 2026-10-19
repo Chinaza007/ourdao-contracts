@@ -2,7 +2,7 @@ use soroban_sdk::{symbol_short, Address, Env};
 
 use crate::error::Error;
 use crate::storage::{self, extend_instance};
-use crate::types::{Member, MemberStatus, StakingRewardClaimed};
+use crate::types::{Member, MemberLoanStats, MemberOverview, MemberStatus, StakingRewardClaimed};
 use crate::util;
 
 // `env.events().publish` is deprecated in soroban-sdk in favour of
@@ -165,6 +165,26 @@ fn compute_pending_yield(env: &Env, addr: &Address) -> i128 {
     let acc = storage::get_yield_accumulator(env);
     let snap = storage::get_yield_snapshot(env, addr);
     (acc - snap).max(0)
+}
+
+/// Read-only aggregate of a member's record, stake, unclaimed yield, loan
+/// track record, registered name and delegate. Returns `NotMember` only if
+/// the address has never registered; an exited member keeps their record and
+/// is reported with its `Inactive` status.
+pub fn member_overview(env: &Env, member: &Address) -> Result<MemberOverview, Error> {
+    let record = storage::get_member(env, member).ok_or(Error::NotMember)?;
+    Ok(MemberOverview {
+        loan_stats: MemberLoanStats {
+            total_loans: record.total_loans,
+            repaid_loans: record.repaid_loans,
+            active_loans: record.active_loans,
+        },
+        stake: storage::get_stake(env, member),
+        pending_yield: compute_pending_yield(env, member),
+        name: storage::get_name_of(env, member),
+        delegate: storage::get_delegation(env, member),
+        member: record,
+    })
 }
 
 #[allow(deprecated)]

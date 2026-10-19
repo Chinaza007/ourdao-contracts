@@ -62,6 +62,23 @@ pub struct Member {
     pub active_loans: u32,
 }
 
+/// Everything the DAO knows about one member, returned by
+/// `get_member_overview` in a single call.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MemberOverview {
+    pub member: Member,
+    /// Tokens the member has staked for a voting-weight bonus.
+    pub stake: i128,
+    /// Interest yield accrued and not yet claimed via `claim_rewards`.
+    pub pending_yield: i128,
+    pub loan_stats: MemberLoanStats,
+    /// Name registered to this address, if any.
+    pub name: Option<String>,
+    /// Address this member delegated their vote to, if any.
+    pub delegate: Option<Address>,
+}
+
 /// On-chain credit track record for a member. Returned by
 /// `get_member_loan_stats` as an O(1) read of the member record.
 #[contracttype]

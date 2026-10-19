@@ -1,5 +1,5 @@
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::Address;
+use soroban_sdk::{Address, String};
 
 use super::common::*;
 use crate::types::MemberStatus;
@@ -285,4 +285,54 @@ fn active_contributions_matches_scan_after_default_penalty() {
     let total = active_contributions(&s);
     assert!(total < 3 * FEE, "penalty must reduce the running total");
     assert_eq!(total, scanned_active_contributions(&s));
+}
+
+// ==================== issue #340: get_member_overview view ====================
+#[test]
+fn get_member_overview_aggregates_member_state() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+
+    s.client
+        .register_name(&borrower, &String::from_str(&s.env, "alice"));
+    s.client.delegate_vote(&borrower, &v1);
+
+    let pid = s.client.request_loan(&borrower, &1_000, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid, &true);
+    s.client.repay_loan(&borrower, &0);
+    s.client.stake(&borrower, &500);
+
+    let loan = s.client.get_loan(&0).unwrap();
+    let per_member = (loan.total_repayment - loan.principal) / 3;
+
+    let overview = s.client.get_member_overview(&borrower);
+    assert_eq!(overview.member, s.client.get_member(&borrower).unwrap());
+    assert_eq!(overview.member.status, MemberStatus::ActiveMember);
+    assert_eq!(overview.stake, 500);
+    assert_eq!(overview.pending_yield, per_member);
+    assert_eq!(
+        overview.loan_stats,
+        s.client.get_member_loan_stats(&borrower)
+    );
+    assert_eq!(overview.loan_stats.total_loans, 1);
+    assert_eq!(overview.loan_stats.repaid_loans, 1);
+    assert_eq!(overview.name, Some(String::from_str(&s.env, "alice")));
+    assert_eq!(overview.delegate, Some(v1.clone()));
+
+    // An exited member keeps their record, reported as Inactive.
+    s.client.exit_dao(&v2);
+    assert_eq!(
+        s.client.get_member_overview(&v2).member.status,
+        MemberStatus::Inactive
+    );
+
+    let stranger = Address::generate(&s.env);
+    assert_eq!(
+        s.client.try_get_member_overview(&stranger),
+        Err(Ok(Error::NotMember))
+    );
 }

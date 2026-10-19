@@ -177,7 +177,7 @@ The *k*-th bonus vote starts at `k² × 100` staked tokens, so the thresholds ar
 | `attach_document(caller, kind, proposal_id, content_hash)` | Anchors an off-chain content hash (e.g. IPFS CID) to a real loan/treasury proposal. |
 | `get_document(kind, proposal_id) -> Option<Bytes>` | View. |
 
-**Views** — `get_member`, `get_loan`, `get_loan_proposal` (auto-refreshes expired phase), `get_treasury_proposal`, `get_loan_policy`, `get_admins`, `is_admin`, `is_member`, `is_eligible_for_loan`, `get_treasury_balance`, `get_treasury_balance_in_asset(asset)`, `is_token_whitelisted(token)`, `get_whitelisted_tokens`, `get_total_members`, `get_active_members`, `get_consensus_threshold`, `get_token`, `is_paused`, `get_stake`, `get_pending_yield`, `get_delegate(delegator)`, `calculate_loan_terms`, `calculate_exit_share`, `has_voted(kind, proposal_id, voter)`.
+**Views** — `get_member`, `get_member_overview(member)` (record, stake, pending yield, loan stats, name and delegate in one call), `get_loan`, `get_loan_proposal` (auto-refreshes expired phase), `get_treasury_proposal`, `get_loan_policy`, `get_admins`, `is_admin`, `is_member`, `is_eligible_for_loan`, `get_treasury_balance`, `get_treasury_balance_in_asset(asset)`, `is_token_whitelisted(token)`, `get_whitelisted_tokens`, `get_total_members`, `get_active_members`, `get_consensus_threshold`, `get_token`, `is_paused`, `get_stake`, `get_pending_yield`, `get_delegate(delegator)`, `calculate_loan_terms`, `calculate_exit_share`, `has_voted(kind, proposal_id, voter)`.
 
 ## Event catalog
 

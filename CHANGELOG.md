@@ -11,6 +11,7 @@ All notable changes to `ourdao-contracts` are documented here. The format follow
 - `staked` and `unstaked` events now include the resulting voting weight (#348).
 
 ### Added
+- `get_member_overview(member)` view returning the member record, stake, pending yield, loan stats, registered name and delegate in one call (#340).
 - `get_delegate(delegator)` view returning the address a member delegated their vote to, or `None` (#341).
 - `docs/events.schema.json`: machine-readable event schema covering all contract event topics (#344).
 - `treasury::tally` and `loans::vote_on_loan_proposal` read the active-member count (and policy/threshold) once per call (#355).
