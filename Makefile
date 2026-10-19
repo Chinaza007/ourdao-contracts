@@ -1,7 +1,7 @@
 WASM_TARGET := wasm32v1-none
 WASM := target/$(WASM_TARGET)/release/ourdao_dao.wasm
 
-.PHONY: all build test fmt clippy audit ci clean optimize size costs
+.PHONY: all build test fmt clippy audit ci clean optimize size costs bindings
 
 all: fmt clippy test build
 
@@ -28,6 +28,9 @@ size: build $(OPTIMIZED)
 # Per-entrypoint resource costs of the optimized wasm (#358).
 costs: $(OPTIMIZED)
 	OURDAO_WASM=$(CURDIR)/$(OPTIMIZED) cargo test --locked --lib costs -- --ignored --nocapture --test-threads=1
+
+bindings: generate-bindings
+	@echo "TypeScript bindings are at bindings/ts/"
 
 fmt:
 	cargo fmt --all -- --check
