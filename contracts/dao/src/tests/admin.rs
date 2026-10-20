@@ -462,6 +462,44 @@ fn get_version_returns_cargo_pkg_version() {
     assert_eq!(version, String::from_str(&env, env!("CARGO_PKG_VERSION")));
 }
 
+// #339: the summary must agree field-for-field with the views it replaces.
+// Staked funds stay out of the base-token treasury, and the base token is
+// listed first among the whitelisted assets.
+#[test]
+fn get_dao_summary_matches_individual_views() {
+    let s = setup(3);
+    let staker = s.members.get(0).unwrap();
+    s.client.stake(&staker, &500);
+    let extra = whitelist_second_asset(&s, 700);
+
+    let summary = s.client.get_dao_summary();
+    assert_eq!(summary.total_members, s.client.get_total_members());
+    assert_eq!(summary.active_members, s.client.get_active_members());
+    assert_eq!(summary.treasury_balance, s.client.get_treasury_balance());
+    assert_eq!(summary.total_staked, 500);
+    assert_eq!(
+        summary.consensus_threshold,
+        s.client.get_consensus_threshold()
+    );
+    assert!(!summary.paused);
+    assert_eq!(summary.version, s.client.get_version());
+
+    assert_eq!(summary.treasury_balances.len(), 2);
+    let base = summary.treasury_balances.get(0).unwrap();
+    assert_eq!(base.asset, s.client.get_token());
+    assert_eq!(base.balance, summary.treasury_balance);
+    let second = summary.treasury_balances.get(1).unwrap();
+    assert_eq!(second.asset, extra.address);
+    assert_eq!(second.balance, 700);
+    assert_eq!(
+        second.balance,
+        s.client.get_treasury_balance_in_asset(&extra.address)
+    );
+
+    s.client.pause(&s.admin);
+    assert!(s.client.get_dao_summary().paused);
+}
+
 #[test]
 fn test_bump_dao_ttl() {
     let s = setup(1);

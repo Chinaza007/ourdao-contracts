@@ -36,9 +36,9 @@ use types::{SeedDocEntry, SeedNameEntry, SeedStakeEntry, SeedYieldEntry};
 pub use error::Error;
 pub use storage::ProposalKind;
 pub use types::{
-    Loan, LoanPolicy, LoanProposal, LoanTerms, Member, MemberLoanStats, PendingPolicyUpdate,
-    SeedDocEntry, SeedNameEntry, SeedStakeEntry, SeedYieldEntry, StakingRewardClaimed,
-    TreasuryProposal,
+    AssetBalance, DaoSummary, Loan, LoanPolicy, LoanProposal, LoanTerms, Member, MemberLoanStats,
+    PendingPolicyUpdate, SeedDocEntry, SeedNameEntry, SeedStakeEntry, SeedYieldEntry,
+    StakingRewardClaimed, TreasuryProposal,
 };
 
 #[contract]
@@ -460,6 +460,27 @@ impl OurDao {
 
     pub fn get_token(env: Env) -> Address {
         storage::get_token(&env)
+    }
+
+    /// Headline DAO state in one call (#339): membership counts, spendable
+    /// treasury per whitelisted asset, total staked, threshold, pause flag and
+    /// version. Each field matches the individual view it summarises.
+    pub fn get_dao_summary(env: Env) -> DaoSummary {
+        let mut treasury_balances = Vec::new(&env);
+        for asset in storage::get_whitelisted_tokens(&env).iter() {
+            let balance = util::treasury_balance_in_asset(&env, &asset);
+            treasury_balances.push_back(AssetBalance { asset, balance });
+        }
+        DaoSummary {
+            total_members: storage::get_total_members(&env),
+            active_members: storage::get_active_members(&env),
+            treasury_balance: util::treasury_balance(&env),
+            treasury_balances,
+            total_staked: storage::get_total_staked(&env),
+            consensus_threshold: storage::get_threshold(&env),
+            paused: storage::is_paused(&env),
+            version: String::from_str(&env, env!("CARGO_PKG_VERSION")),
+        }
     }
 
     // ==================== token whitelist ====================

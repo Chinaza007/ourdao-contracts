@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Bytes, String};
+use soroban_sdk::{contracttype, Address, Bytes, String, Vec};
 
 /// Basis-points denominator (100% == 10_000).
 pub const BASIS_POINTS: i128 = 10_000;
@@ -146,6 +146,30 @@ pub struct TreasuryProposal {
     pub treasury_threshold: u32,
     /// When true, votes must be committed then revealed (commit-reveal privacy).
     pub private: bool,
+}
+
+/// Spendable treasury balance in one whitelisted asset (#339).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AssetBalance {
+    pub asset: Address,
+    pub balance: i128,
+}
+
+/// Headline DAO state returned by `get_dao_summary` (#339).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DaoSummary {
+    pub total_members: u32,
+    pub active_members: u32,
+    /// Spendable treasury in the base token; same value as `get_treasury_balance`.
+    pub treasury_balance: i128,
+    /// Spendable treasury in every whitelisted asset, base token first.
+    pub treasury_balances: Vec<AssetBalance>,
+    pub total_staked: i128,
+    pub consensus_threshold: u32,
+    pub paused: bool,
+    pub version: String,
 }
 
 /// Computed loan terms returned by the read-only quote helper.
