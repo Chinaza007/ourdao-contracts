@@ -184,8 +184,9 @@ proptest! {
             members.push_back(m);
         }
 
+        let asset = client.get_token();
         env.as_contract(&contract_id, || {
-            crate::loans::distribute_interest(&env, interest);
+            crate::loans::distribute_interest(&env, interest, &asset);
         });
 
         let per_member = interest / active as i128;
