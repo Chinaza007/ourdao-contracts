@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, String};
+use soroban_sdk::{contracttype, Address, Bytes, String};
 
 /// Basis-points denominator (100% == 10_000).
 pub const BASIS_POINTS: i128 = 10_000;
@@ -194,4 +194,38 @@ pub struct StakingRewardClaimed {
 pub struct ProposalVote {
     pub proposal_id: u32,
     pub vote: bool,
+}
+
+// ── seed_state entry types (#332) ─────────────────────────────────────────────
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SeedStakeEntry {
+    pub address: Address,
+    pub amount: i128,
+}
+
+/// Pending yield for a member. `amount` is stored as the negative yield snapshot
+/// so the existing `get_pending_yield` formula `(accumulator - snapshot).max(0)`
+/// reconstructs the correct value from a fresh accumulator of 0 (#332).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SeedYieldEntry {
+    pub address: Address,
+    pub amount: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SeedNameEntry {
+    pub name: String,
+    pub owner: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SeedDocEntry {
+    pub kind: crate::storage::ProposalKind,
+    pub proposal_id: u32,
+    pub content_hash: Bytes,
 }

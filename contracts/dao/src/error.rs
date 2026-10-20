@@ -88,4 +88,8 @@ pub enum Error {
     AssetMismatch = 86,
     /// The base token set at initialization can't be removed (#236).
     CannotRemoveBaseToken = 87,
+    /// Seeding is locked; `lock_seeding` has already been called (#332).
+    SeedingLocked = 88,
+    /// Seeding is already locked; calling `lock_seeding` again is a no-op error (#333).
+    SeedingAlreadyLocked = 89,
 }
