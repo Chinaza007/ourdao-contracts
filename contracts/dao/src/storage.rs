@@ -78,6 +78,9 @@ pub(crate) enum DataKey {
     LoanAsset(u32),
     /// Asset a treasury proposal pays out in. Absent means the base token.
     TreasuryAsset(u32),
+    /// Set (to `true`) once by `lock_seeding`; never cleared. Seed entrypoints
+    /// reject any call made after this flag is present (#332/#333).
+    MigrationSeedingLocked,
 }
 
 pub fn extend_instance(env: &Env) {
@@ -577,4 +580,41 @@ pub fn set_treasury_asset(env: &Env, id: u32, asset: &Address) {
     let key = DataKey::TreasuryAsset(id);
     env.storage().persistent().set(&key, asset);
     extend_persistent(env, &key);
+}
+
+// ---------- migration seeding lock (#332 / #333) ----------
+
+pub fn is_seeding_locked(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&DataKey::MigrationSeedingLocked)
+        .unwrap_or(false)
+}
+
+pub fn lock_seeding(env: &Env) {
+    env.storage()
+        .instance()
+        .set(&DataKey::MigrationSeedingLocked, &true);
+}
+
+pub fn set_next_proposal_id_at_least(env: &Env, min: u32) {
+    let current: u32 = env
+        .storage()
+        .instance()
+        .get(&DataKey::NextProposalId)
+        .unwrap_or(0);
+    if min > current {
+        env.storage().instance().set(&DataKey::NextProposalId, &min);
+    }
+}
+
+pub fn set_next_treasury_id_at_least(env: &Env, min: u32) {
+    let current: u32 = env
+        .storage()
+        .instance()
+        .get(&DataKey::NextTreasuryId)
+        .unwrap_or(0);
+    if min > current {
+        env.storage().instance().set(&DataKey::NextTreasuryId, &min);
+    }
 }
