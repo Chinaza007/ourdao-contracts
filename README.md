@@ -284,6 +284,11 @@ IDENTITY=my-key ALIAS=ourdao-dao TOKEN=<token-contract-id> \
   ./scripts/deploy-testnet.sh
 ```
 
+On testnet the script also deploys a second test asset (`SECOND_ASSET_CODE`, default
+`OURTESTB`) issued by the deployer, and proposes it for the treasury whitelist. Whitelisting
+is timelocked for 48 hours, so the script ends by printing the `execute_token_addition`
+command to run once that has passed.
+
 `POLICY_JSON` overrides the default loan policy; see `./scripts/deploy-testnet.sh --help`
 for every option. If `initialize` fails after the deploy, the script says so
 loudly and exits non-zero: initialize that contract immediately or discard it.
