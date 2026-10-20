@@ -11,6 +11,9 @@ All notable changes to `ourdao-contracts` are documented here. The format follow
 - `staked` and `unstaked` events now include the resulting voting weight (#348).
 
 ### Added
+- `get_dao_summary` view: member counts, spendable treasury per whitelisted asset, total staked, consensus threshold, pause flag and version in one call (#339).
+- `scripts/export-state.sh`: dumps a deployed DAO's live state to JSON using read-only views, for migration step 3 (#336).
+- `scripts/keeper.sh`: permissionless keeper that marks overdue loans defaulted and expires stale loan and treasury proposals. Supports `--dry-run` (#337, #338).
 - `docs/events.schema.json`: machine-readable event schema covering all contract event topics (#344).
 - `treasury::tally` and `loans::vote_on_loan_proposal` read the active-member count (and policy/threshold) once per call (#355).
 - `bench-cost.sh` now runs a real `test_budget_scaling` benchmark that also covers `request_loan_in_asset`, `repay_loan_in_asset` and `propose_withdrawal_in_asset` (#354).
