@@ -1226,4 +1226,109 @@ fn vote_batch_duplicate_ids_in_one_batch_fails_and_rolls_back() {
     );
 }
 
+// ==================== issue #306: get_member_loan_stats ====================
+
+#[test]
+fn member_loan_stats_rejected_proposal_does_not_count() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let _v1 = s.members.get(1).unwrap();
+    let _v2 = s.members.get(2).unwrap();
+
+    // Initial stats should be zero.
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 0);
+    assert_eq!(stats.repaid_loans, 0);
+    assert_eq!(stats.active_loans, 0);
+
+    let pid = s.client.request_loan(&borrower, &1_000, &None);
+    advance(&s.env, EDITING + 1);
+
+    // Voting period passes without reaching approval threshold; proposal expires and rejects.
+    advance(&s.env, VOTING_PERIOD + 1);
+    s.client.expire_loan_proposal(&pid);
+
+    let prop = s.client.get_loan_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Rejected);
+    assert_eq!(prop.phase, ProposalPhase::Expired);
+
+    // Stats must remain zero because the loan was never disbursed.
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 0);
+    assert_eq!(stats.repaid_loans, 0);
+    assert_eq!(stats.active_loans, 0);
+}
+
+#[test]
+fn member_loan_stats_counts_across_repay_partial_default_and_rejection() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+
+    // 1. Initial
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 0);
+    assert_eq!(stats.repaid_loans, 0);
+    assert_eq!(stats.active_loans, 0);
+
+    // 2. Loan 1: Request, approve, disburse -> active
+    let pid1 = s.client.request_loan(&borrower, &1_000, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid1, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid1, &true);
+
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 1);
+    assert_eq!(stats.repaid_loans, 0);
+    assert_eq!(stats.active_loans, 1);
+
+    // 3. Partial repay: remains active
+    let loan1 = s.client.get_loan(&pid1).unwrap();
+    let half = (loan1.total_repayment - loan1.amount_repaid) / 2;
+    s.client.repay_loan_partial(&borrower, &pid1, &half);
+
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 1);
+    assert_eq!(stats.repaid_loans, 0);
+    assert_eq!(stats.active_loans, 1);
+
+    // 4. Full repay: repaid_loans becomes 1, active_loans becomes 0
+    s.client.repay_loan(&borrower, &pid1);
+
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 1);
+    assert_eq!(stats.repaid_loans, 1);
+    assert_eq!(stats.active_loans, 0);
+
+    // 5. Proposal 2: Rejected (expired without quorum) -> stats remain unchanged (1, 1, 0)
+    let pid2 = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + VOTING_PERIOD + 2);
+    s.client.expire_loan_proposal(&pid2);
+
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 1);
+    assert_eq!(stats.repaid_loans, 1);
+    assert_eq!(stats.active_loans, 0);
+
+    // 6. Loan 3: Defaulted -> total becomes 2, active becomes 0, repaid stays 1
+    let pid3 = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid3, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid3, &true);
+
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 2);
+    assert_eq!(stats.repaid_loans, 1);
+    assert_eq!(stats.active_loans, 1);
+
+    advance(&s.env, LOAN_DURATION + 1);
+    s.client.mark_loan_defaulted(&pid3);
+
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 2);
+    assert_eq!(stats.repaid_loans, 1);
+    assert_eq!(stats.active_loans, 0);
+}
+
 
