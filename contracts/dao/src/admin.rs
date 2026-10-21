@@ -170,6 +170,12 @@ pub fn set_consensus_threshold(env: &Env, caller: Address, threshold: u32) -> Re
 pub fn propose_policy_update(env: &Env, caller: Address, policy: LoanPolicy) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     validate_policy(&policy)?;
+    if policy.treasury_threshold == 0 || policy.treasury_threshold as i128 > BASIS_POINTS {
+        return Err(Error::InvalidLoanPolicy);
+    }
+    if policy.quorum_bps == 0 || policy.quorum_bps as i128 > BASIS_POINTS {
+        return Err(Error::InvalidLoanPolicy);
+    }
     let now = env.ledger().timestamp();
     let execution_time = now + TIMELOCK_DURATION;
     let update = PendingPolicyUpdate {
@@ -232,7 +238,7 @@ pub fn pause(env: &Env, caller: Address) -> Result<(), Error> {
     }
     storage::set_paused(env, true);
     extend_instance(env);
-    env.events().publish((symbol_short!("paused"),), (caller));
+    env.events().publish((symbol_short!("paused"),), caller);
     Ok(())
 }
 
@@ -244,7 +250,7 @@ pub fn unpause(env: &Env, caller: Address) -> Result<(), Error> {
     }
     storage::set_paused(env, false);
     extend_instance(env);
-    env.events().publish((symbol_short!("unpaused"),), (caller));
+    env.events().publish((symbol_short!("unpaused"),), caller);
     Ok(())
 }
 

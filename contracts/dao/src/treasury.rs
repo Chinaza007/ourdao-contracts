@@ -41,6 +41,9 @@ pub fn propose_withdrawal_in_asset(
     if amount <= 0 {
         return Err(Error::InvalidAmount);
     }
+    if destination == env.current_contract_address() {
+        return Err(Error::InvalidProposal);
+    }
     if reason.is_empty() || reason.len() > 256 {
         return Err(Error::InvalidProposal);
     }

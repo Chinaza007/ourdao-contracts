@@ -94,4 +94,6 @@ pub enum Error {
     SeedingAlreadyLocked = 89,
     /// Member already has the maximum number of simultaneously open proposals.
     TooManyOpenProposals = 90,
+    /// A borrower cannot vote on their own loan proposal (#327).
+    BorrowerCannotVote = 91,
 }
