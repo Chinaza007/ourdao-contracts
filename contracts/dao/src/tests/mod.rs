@@ -9,3 +9,4 @@ mod properties;
 mod registry;
 mod staking;
 mod treasury;
+mod ttl;
