@@ -15,6 +15,7 @@ mod docs;
 mod error;
 mod loans;
 mod membership;
+mod migration;
 mod privacy;
 mod registry;
 mod staking;
@@ -30,6 +31,7 @@ mod tests;
 mod bench;
 
 use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, Vec};
+use types::{SeedDocEntry, SeedNameEntry, SeedStakeEntry, SeedYieldEntry};
 
 pub use error::Error;
 pub use storage::ProposalKind;
@@ -466,6 +468,27 @@ impl OurDao {
         storage::get_token(&env)
     }
 
+    /// Headline DAO state in one call (#339): membership counts, spendable
+    /// treasury per whitelisted asset, total staked, threshold, pause flag and
+    /// version. Each field matches the individual view it summarises.
+    pub fn get_dao_summary(env: Env) -> DaoSummary {
+        let mut treasury_balances = Vec::new(&env);
+        for asset in storage::get_whitelisted_tokens(&env).iter() {
+            let balance = util::treasury_balance_in_asset(&env, &asset);
+            treasury_balances.push_back(AssetBalance { asset, balance });
+        }
+        DaoSummary {
+            total_members: storage::get_total_members(&env),
+            active_members: storage::get_active_members(&env),
+            treasury_balance: util::treasury_balance(&env),
+            treasury_balances,
+            total_staked: storage::get_total_staked(&env),
+            consensus_threshold: storage::get_threshold(&env),
+            paused: storage::is_paused(&env),
+            version: String::from_str(&env, env!("CARGO_PKG_VERSION")),
+        }
+    }
+
     // ==================== token whitelist ====================
 
     /// Proposes adding `token` to the treasury's supported-asset whitelist.
@@ -564,5 +587,102 @@ impl OurDao {
 
     pub fn calculate_exit_share(env: Env, member: Address) -> i128 {
         membership::calculate_exit_share(&env, &member)
+    }
+
+    // ==================== paginated list views (#334 / #335) ====================
+
+    /// Returns up to `limit` member records starting at offset `start` in the
+    /// internal member-address list. Returns an empty vec when `start` is past
+    /// the end.  Skips addresses whose persistent storage entry has expired.
+    pub fn list_members(env: Env, start: u32, limit: u32) -> Vec<Member> {
+        let all = storage::get_members(&env);
+        let mut out = Vec::new(&env);
+        let len = all.len();
+        let from = start.min(len);
+        let to = (start + limit).min(len);
+        for i in from..to {
+            let addr = all.get(i).unwrap();
+            if let Some(m) = storage::get_member(&env, &addr) {
+                out.push_back(m);
+            }
+        }
+        out
+    }
+
+    /// Returns up to `limit` treasury proposals starting at proposal id `start`.
+    /// Ids are sequential from 0; absent entries (expired from storage) are
+    /// skipped.  Returns an empty vec when `start` is past the last proposal.
+    pub fn list_treasury_proposals(env: Env, start: u32, limit: u32) -> Vec<TreasuryProposal> {
+        let count = storage::get_proposal_count(&env, storage::DataKey::NextTreasuryId);
+        let mut out = Vec::new(&env);
+        let from = start.min(count);
+        let to = (start + limit).min(count);
+        for id in from..to {
+            if let Some(p) = storage::get_treasury_proposal(&env, id) {
+                out.push_back(p);
+            }
+        }
+        out
+    }
+
+    // ==================== migration seed entrypoints (#332 / #333) ====================
+
+    /// Seeds member records from a prior deployment. Admin-only; rejected after
+    /// `lock_seeding()` is called. See `docs/MIGRATION.md` for the full procedure.
+    pub fn seed_members(
+        env: Env,
+        caller: Address,
+        members: Vec<Member>,
+    ) -> Result<(), Error> {
+        migration::seed_members(&env, caller, members)
+    }
+
+    pub fn seed_stakes(
+        env: Env,
+        caller: Address,
+        stakes: Vec<SeedStakeEntry>,
+    ) -> Result<(), Error> {
+        migration::seed_stakes(&env, caller, stakes)
+    }
+
+    pub fn seed_pending_yield(
+        env: Env,
+        caller: Address,
+        yields: Vec<SeedYieldEntry>,
+    ) -> Result<(), Error> {
+        migration::seed_pending_yield(&env, caller, yields)
+    }
+
+    pub fn seed_loans(env: Env, caller: Address, loans: Vec<Loan>) -> Result<(), Error> {
+        migration::seed_loans(&env, caller, loans)
+    }
+
+    pub fn seed_names(
+        env: Env,
+        caller: Address,
+        names: Vec<SeedNameEntry>,
+    ) -> Result<(), Error> {
+        migration::seed_names(&env, caller, names)
+    }
+
+    pub fn seed_docs(
+        env: Env,
+        caller: Address,
+        docs: Vec<SeedDocEntry>,
+    ) -> Result<(), Error> {
+        migration::seed_docs(&env, caller, docs)
+    }
+
+    /// Irreversibly closes the seeding window. All `seed_*` entrypoints reject
+    /// calls after this. Admin-only. Returns `SeedingAlreadyLocked` if already
+    /// locked.
+    pub fn lock_seeding(env: Env, caller: Address) -> Result<(), Error> {
+        migration::lock_seeding(&env, caller)
+    }
+
+    /// Returns `true` while the seeding window is open (before `lock_seeding`
+    /// is called).
+    pub fn is_seeding_locked(env: Env) -> bool {
+        storage::is_seeding_locked(&env)
     }
 }

@@ -30,6 +30,7 @@ This repository is one of three that make up OurDAO:
 - [Error codes](#error-codes)
 - [Build & test](#build--test)
 - [Deploy to testnet](#deploy-to-testnet)
+- [Operator scripts](#operator-scripts)
 - [Security notes](#security-notes)
 - [Known limitations](#known-limitations)
 - [Roadmap](#roadmap)
@@ -87,6 +88,8 @@ contracts/dao/
     tests/         # test suite, one module per contract module (`cargo test`)
   scripts/
     deploy-testnet.sh   # builds, deploys AND initializes; --dry-run, guarded against non-testnet
+    export-state.sh     # dumps a deployed DAO's live state to JSON via read-only views
+    keeper.sh           # permissionless keeper: marks overdue loans defaulted, expires stale proposals
 ```
 
 ## Public interface (ABI)
@@ -177,7 +180,7 @@ The *k*-th bonus vote starts at `k² × 100` staked tokens, so the thresholds ar
 | `attach_document(caller, kind, proposal_id, content_hash)` | Anchors an off-chain content hash (e.g. IPFS CID) to a real loan/treasury proposal. |
 | `get_document(kind, proposal_id) -> Option<Bytes>` | View. |
 
-**Views** — `get_member`, `get_member_overview(member)` (record, stake, pending yield, loan stats, name and delegate in one call), `get_loan`, `get_loan_proposal` (auto-refreshes expired phase), `get_treasury_proposal`, `get_loan_policy`, `get_admins`, `is_admin`, `is_member`, `is_eligible_for_loan`, `get_treasury_balance`, `get_treasury_balance_in_asset(asset)`, `is_token_whitelisted(token)`, `get_whitelisted_tokens`, `get_total_members`, `get_active_members`, `get_consensus_threshold`, `get_token`, `is_paused`, `get_stake`, `get_pending_yield`, `get_delegate(delegator)`, `calculate_loan_terms`, `calculate_exit_share`, `has_voted(kind, proposal_id, voter)`.
+**Views** — `get_member`, `get_loan`, `get_loan_proposal` (auto-refreshes expired phase), `get_treasury_proposal`, `get_loan_policy`, `get_admins`, `is_admin`, `is_member`, `is_eligible_for_loan`, `get_treasury_balance`, `get_treasury_balance_in_asset(asset)`, `is_token_whitelisted(token)`, `get_whitelisted_tokens`, `get_total_members`, `get_active_members`, `get_consensus_threshold`, `get_token`, `get_dao_summary` (all headline state in one call), `is_paused`, `get_stake`, `get_pending_yield`, `calculate_loan_terms`, `calculate_exit_share`, `has_voted(kind, proposal_id, voter)`.
 
 ## Event catalog
 
@@ -328,6 +331,30 @@ After deploying, initialize the DAO with your admin set, consensus threshold
 (bps), membership fee, DAO token contract id, and loan policy. The script
 prints a filled-in example; the token id can be the testnet USDC contract or
 the native XLM Stellar Asset Contract (`stellar contract id asset --asset native --network testnet`).
+
+## Operator scripts
+
+Both scripts take a contract id and default to testnet (`--network <name>` to change it). They need the `stellar` CLI and `jq`.
+
+**Exporting state.** `scripts/export-state.sh <contract-id> --out state.json` reads the DAO's state through read-only views and writes it as one JSON document. It submits nothing. It warns when some members can't be read because their storage has expired. This is step 3 of the [migration procedure](docs/MIGRATION.md).
+
+**Keeper.** `scripts/keeper.sh` runs the time-based transitions that anyone may trigger:
+
+- `mark_loan_defaulted` for each active loan past `due_time + default_grace_period`;
+- `expire_loan_proposal` and `expire_treasury_proposal` for proposals whose voting window has closed.
+
+It does nothing while the contract is paused, and exits non-zero if any call fails so cron or monitoring can alert on it. Run it with `--dry-run` first to see what it would submit. The identity that pays the fees must already exist:
+
+```bash
+stellar keys generate ourdao-keeper --network testnet --fund
+./scripts/keeper.sh --dry-run --network testnet <contract-id>
+```
+
+To run it every 15 minutes from cron:
+
+```bash
+*/15 * * * * IDENTITY=ourdao-keeper /path/to/ourdao-contracts/scripts/keeper.sh --network testnet <contract-id> >> ~/ourdao-keeper.log 2>&1
+```
 
 ## Security notes
 

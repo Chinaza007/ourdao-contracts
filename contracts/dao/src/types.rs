@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, String};
+use soroban_sdk::{contracttype, Address, Bytes, String, Vec};
 
 /// Basis-points denominator (100% == 10_000).
 pub const BASIS_POINTS: i128 = 10_000;
@@ -165,6 +165,30 @@ pub struct TreasuryProposal {
     pub private: bool,
 }
 
+/// Spendable treasury balance in one whitelisted asset (#339).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AssetBalance {
+    pub asset: Address,
+    pub balance: i128,
+}
+
+/// Headline DAO state returned by `get_dao_summary` (#339).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DaoSummary {
+    pub total_members: u32,
+    pub active_members: u32,
+    /// Spendable treasury in the base token; same value as `get_treasury_balance`.
+    pub treasury_balance: i128,
+    /// Spendable treasury in every whitelisted asset, base token first.
+    pub treasury_balances: Vec<AssetBalance>,
+    pub total_staked: i128,
+    pub consensus_threshold: u32,
+    pub paused: bool,
+    pub version: String,
+}
+
 /// Computed loan terms returned by the read-only quote helper.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -211,4 +235,38 @@ pub struct StakingRewardClaimed {
 pub struct ProposalVote {
     pub proposal_id: u32,
     pub vote: bool,
+}
+
+// ── seed_state entry types (#332) ─────────────────────────────────────────────
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SeedStakeEntry {
+    pub address: Address,
+    pub amount: i128,
+}
+
+/// Pending yield for a member. `amount` is stored as the negative yield snapshot
+/// so the existing `get_pending_yield` formula `(accumulator - snapshot).max(0)`
+/// reconstructs the correct value from a fresh accumulator of 0 (#332).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SeedYieldEntry {
+    pub address: Address,
+    pub amount: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SeedNameEntry {
+    pub name: String,
+    pub owner: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SeedDocEntry {
+    pub kind: crate::storage::ProposalKind,
+    pub proposal_id: u32,
+    pub content_hash: Bytes,
 }
