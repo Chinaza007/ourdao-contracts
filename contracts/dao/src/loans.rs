@@ -150,13 +150,13 @@ pub fn request_loan_in_asset(
     if asset != storage::get_token(env) {
         storage::set_loan_asset(env, id, &asset);
         env.events()
-            .publish((symbol_short!("loan_asst"),), (id, asset));
+            .publish((symbol_short!("loan_asst"),), (id, asset.clone()));
     }
     storage::extend_instance(env);
 
     env.events().publish(
         (symbol_short!("loan_req"),),
-        (id, borrower, amount, terms.total_repayment),
+        (id, borrower, amount, terms.total_repayment, asset),
     );
     Ok(id)
 }
@@ -407,6 +407,7 @@ fn approve_and_disburse(env: &Env, proposal: &LoanProposal) -> Result<(), Error>
             proposal.borrower.clone(),
             proposal.amount,
             loan.due_time,
+            asset,
         ),
     );
     Ok(())
@@ -551,11 +552,13 @@ fn repay_loan_internal(
     // Yield is accounted and claimed in the base token, so interest paid in
     // any other asset stays in the treasury rather than being distributed.
     if asset == storage::get_token(env) {
-        distribute_interest(env, interest_component);
+        distribute_interest(env, interest_component, &asset);
     }
 
-    env.events()
-        .publish((symbol_short!("loan_rpy"),), (loan_id, borrower, remaining));
+    env.events().publish(
+        (symbol_short!("loan_rpy"),),
+        (loan_id, borrower, remaining, asset),
+    );
     Ok(())
 }
 
@@ -658,8 +661,11 @@ pub fn mark_loan_defaulted(env: &Env, loan_id: u32) -> Result<(), Error> {
 /// `pub(crate)` (rather than private) solely so the property tests in
 /// `tests/properties.rs` can drive it directly with arbitrary `interest` values instead
 /// of only the ones reachable through a real loan's computed interest.
+///
+/// `asset` is the asset the interest was paid in. It is carried on the
+/// `interest` event so indexers can attribute it to the right treasury.
 #[allow(deprecated)]
-pub(crate) fn distribute_interest(env: &Env, interest: i128) {
+pub(crate) fn distribute_interest(env: &Env, interest: i128, asset: &Address) {
     let active = storage::get_active_members(env) as i128;
     if interest <= 0 || active == 0 {
         return;
@@ -678,6 +684,8 @@ pub(crate) fn distribute_interest(env: &Env, interest: i128) {
     }
 
     // Unconditionally publish the event so the indexer sees the interest paid
-    env.events()
-        .publish((symbol_short!("interest"),), (interest, active));
+    env.events().publish(
+        (symbol_short!("interest"),),
+        (interest, active, asset.clone()),
+    );
 }

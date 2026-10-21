@@ -10,6 +10,12 @@ This document tracks the OurDAO DAO contract deployments across networks. Each d
 |---------|---|---|---|
 | Latest | TBD | Preparing | - |
 
+The testnet DAO also holds a second test asset, `OURTESTB`, so multi-token flows can be exercised. Its contract ID is printed by `scripts/deploy-testnet.sh`, and it is recorded here once the script has run:
+
+| Asset | Contract ID | Whitelisted | Recorded |
+|-------|---|---|---|
+| `OURTESTB` | TBD | Proposed, executes 48 hours after `propose_token_addition` | - |
+
 ### Stellar Public Network
 
 | Release | Contract ID | Status | Deployed |

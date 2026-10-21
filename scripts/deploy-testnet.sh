@@ -25,6 +25,9 @@
 #   TOKEN                token contract id the DAO uses          (testnet default: native XLM SAC;
 #                                                                required elsewhere)
 #   ADMINS_JSON          JSON array of admin addresses           (default: the deployer)
+#   SECOND_ASSET_CODE    code of the second test asset, testnet only (default: OURTESTB)
+#                        Its whitelisting is timelocked for 48h: the script proposes it,
+#                        and prints the execute_token_addition command to run afterwards.
 #   CONSENSUS_THRESHOLD  loan approval threshold in bps          (default: 5100)
 #   MEMBERSHIP_FEE       membership fee in token base units      (default: 10000000)
 #   POLICY_JSON          LoanPolicy as JSON                      (default: 3-day edit/vote, 5-20% rates)
@@ -46,6 +49,7 @@ WASM_TARGET="wasm32v1-none"
 if [[ -z "${POLICY_JSON}" ]]; then
   POLICY_JSON="$(printf '{"min_membership_duration":0,"membership_contribution":%s,"max_loan_duration":2592000,"min_interest_rate":500,"max_interest_rate":2000,"cooldown_period":0,"max_loan_to_treasury_ratio":5000,"default_grace_period":259200,"default_penalty_bps":2000,"editing_period":259200,"voting_period":259200,"treasury_threshold":6000,"quorum_bps":0}' "${MEMBERSHIP_FEE}")"
 fi
+SECOND_ASSET_CODE="${SECOND_ASSET_CODE:-OURTESTB}"
 WASM="target/${WASM_TARGET}/release/ourdao_dao.optimized.wasm"
 
 DRY_RUN=0
@@ -235,6 +239,45 @@ if ! run stellar contract invoke \
   exit 1
 fi
 
+# Second test asset, so multi-token flows can be exercised on testnet. The
+# deployer issues it and, as an admin, proposes it for the treasury whitelist.
+# Whitelisting is timelocked for 48 hours, so it is finished later with the
+# execute command printed at the end.
+SECOND_ASSET_ID=""
+if [[ ${IS_TESTNET} -eq 1 ]]; then
+  SECOND_ASSET="${SECOND_ASSET_CODE}:${DEPLOYER_ADDR}"
+  echo "==> Deploying second test asset ${SECOND_ASSET_CODE}"
+  capture SECOND_ASSET_ID "<second-asset-contract-id>" \
+    stellar contract id asset --asset "${SECOND_ASSET}" --network "${NETWORK}"
+  if ! run stellar contract asset deploy \
+    --asset "${SECOND_ASSET}" \
+    --source "${IDENTITY}" \
+    --network "${NETWORK}"; then
+    echo "" >&2
+    echo "error: could not deploy ${SECOND_ASSET_CODE} (it may already exist for ${DEPLOYER_ADDR})." >&2
+    echo "       ${CONTRACT_ID} is deployed and initialized. Rerun with SECOND_ASSET_CODE set to a new code to add the asset." >&2
+    exit 1
+  fi
+
+  echo "==> Proposing ${SECOND_ASSET_CODE} (${SECOND_ASSET_ID}) for the treasury whitelist"
+  # The caller must be an admin. The default ADMINS_JSON is the deployer.
+  if ! run stellar contract invoke \
+    --id "${CONTRACT_ID}" \
+    --source "${IDENTITY}" \
+    --network "${NETWORK}" \
+    -- \
+    propose_token_addition \
+    --caller "${DEPLOYER_ADDR}" \
+    --token "${SECOND_ASSET_ID}"; then
+    echo "" >&2
+    echo "error: ${CONTRACT_ID} is deployed and initialized, but ${SECOND_ASSET_CODE} was not proposed." >&2
+    echo "       Propose it with propose_token_addition as an admin (see docs/ADMIN_GUIDE.md)." >&2
+    exit 1
+  fi
+else
+  echo "==> Skipping the second test asset: only testnet gets one"
+fi
+
 echo ""
 echo "==================================================================="
 if [[ ${DRY_RUN} -eq 1 ]]; then
@@ -244,7 +287,17 @@ else
   echo "   contract id: ${CONTRACT_ID}"
   echo "   saved alias: ${ALIAS}"
   echo "   wasm sha256: ${WASM_SHA256}"
+  if [[ ${IS_TESTNET} -eq 1 ]]; then
+    echo "   test asset:  ${SECOND_ASSET_CODE} ${SECOND_ASSET_ID} (whitelisting proposed)"
+  fi
 fi
 echo "==================================================================="
 echo ""
+if [[ ${DRY_RUN} -eq 0 && ${IS_TESTNET} -eq 1 ]]; then
+  echo "${SECOND_ASSET_CODE} becomes usable in the treasury 48 hours after it was proposed."
+  echo "Once that has passed, whitelist it with:"
+  echo "  stellar contract invoke --id ${CONTRACT_ID} --source ${IDENTITY} --network ${NETWORK} -- \\"
+  echo "    execute_token_addition --caller ${DEPLOYER_ADDR} --token ${SECOND_ASSET_ID}"
+  echo ""
+fi
 echo "To verify this deployment against a release, see DEPLOYMENTS.md"

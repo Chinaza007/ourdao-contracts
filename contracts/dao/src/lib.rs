@@ -36,9 +36,8 @@ use types::{SeedDocEntry, SeedNameEntry, SeedStakeEntry, SeedYieldEntry};
 pub use error::Error;
 pub use storage::ProposalKind;
 pub use types::{
-    AssetBalance, DaoSummary, Loan, LoanPolicy, LoanProposal, LoanTerms, Member, MemberLoanStats,
-    PendingPolicyUpdate, SeedDocEntry, SeedNameEntry, SeedStakeEntry, SeedYieldEntry,
-    StakingRewardClaimed, TreasuryProposal,
+    Loan, LoanPolicy, LoanProposal, LoanTerms, Member, MemberLoanStats, MemberOverview,
+    PendingPolicyUpdate, StakingRewardClaimed, TreasuryProposal,
 };
 
 #[contract]
@@ -390,6 +389,13 @@ impl OurDao {
             .ok_or(Error::NotMember)
     }
 
+    /// Returns everything about `member` in one call: their record, stake,
+    /// unclaimed yield, loan track record, registered name and delegate.
+    /// Returns `NotMember` if the address has never registered.
+    pub fn get_member_overview(env: Env, member: Address) -> Result<MemberOverview, Error> {
+        membership::member_overview(&env, &member)
+    }
+
     pub fn get_loan(env: Env, loan_id: u32) -> Option<Loan> {
         storage::get_loan(&env, loan_id)
     }
@@ -548,6 +554,12 @@ impl OurDao {
         let acc = storage::get_yield_accumulator(&env);
         let snap = storage::get_yield_snapshot(&env, &member);
         (acc - snap).max(0)
+    }
+
+    /// Returns the address `delegator` has delegated their vote to, or `None`
+    /// if they have never called `delegate_vote`.
+    pub fn get_delegate(env: Env, delegator: Address) -> Option<Address> {
+        storage::get_delegation(&env, &delegator)
     }
 
     /// Returns whether `voter` has cast a (possibly not-yet-revealed) vote

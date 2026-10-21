@@ -195,14 +195,14 @@ Every state-changing call publishes an event, which `ourdao-backend` indexes sin
 | `joined` | `(member, fee)` | `register_member` |
 | `exited` | `(member, share)` | `exit_dao` |
 | `claimed` | `(member, pending)` | `claim_rewards` |
-| `loan_req` | `(id, borrower, amount, total_repayment)` | `request_loan` |
+| `loan_req` | `(id, borrower, amount, total_repayment, asset)` | `request_loan` / `request_loan_in_asset` — `asset` is the loan's asset (the base token unless set) |
 | `loan_edit` | `(proposal_id, borrower, new_amount, total_repayment)` | `edit_loan_proposal` |
 | `loan_vote` | `(proposal_id, voter, support)` | `vote_on_loan_proposal` |
-| `loan_appr` | `(id, borrower, amount)` | auto-fired on approval — `id` is both the loan's and its proposal's id |
-| `loan_rpy` | `(loan_id, borrower, outstanding)` | `repay_loan` / `repay_loan_partial` — `outstanding` is the balance still remaining *after* this payment (0 for a payment that fully repays the loan) |
+| `loan_appr` | `(id, borrower, amount, due_time, asset)` | auto-fired on approval — `id` is both the loan's and its proposal's id |
+| `loan_rpy` | `(loan_id, borrower, outstanding, asset)` | `repay_loan` / `repay_loan_partial` / `repay_loan_in_asset` — `outstanding` is the balance still remaining *after* this payment (0 for a payment that fully repays the loan) |
 | `loan_dflt` | `(loan_id, borrower, penalty)` | `mark_loan_defaulted` |
 | `loan_exp` | `(proposal_id, borrower)` | `expire_loan_proposal` (permissionless keeper) |
-| `interest` | `(interest, active_members)` | fired alongside `loan_rpy` |
+| `interest` | `(interest, active_members, asset)` | fired alongside `loan_rpy` for base-token repayments only; `asset` is always the base token |
 | `tre_prop` | `(id, amount, destination, private)` | `propose_treasury_withdrawal` |
 | `tre_vote` | `(id, voter, support)` | `vote_on_treasury_proposal` |
 | `tre_exec` | `(id, amount, destination)` | auto-fired on execution |
@@ -286,6 +286,11 @@ IDENTITY=my-key ALIAS=ourdao-dao TOKEN=<token-contract-id> \
   ADMINS_JSON='["G...","G..."]' CONSENSUS_THRESHOLD=5100 MEMBERSHIP_FEE=10000000 \
   ./scripts/deploy-testnet.sh
 ```
+
+On testnet the script also deploys a second test asset (`SECOND_ASSET_CODE`, default
+`OURTESTB`) issued by the deployer, and proposes it for the treasury whitelist. Whitelisting
+is timelocked for 48 hours, so the script ends by printing the `execute_token_addition`
+command to run once that has passed.
 
 `POLICY_JSON` overrides the default loan policy; see `./scripts/deploy-testnet.sh --help`
 for every option. If `initialize` fails after the deploy, the script says so

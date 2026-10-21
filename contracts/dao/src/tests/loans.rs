@@ -1,8 +1,8 @@
 extern crate std;
 
 use soroban_sdk::testutils::{Address as _, Events as _};
-use soroban_sdk::xdr::{ContractEventBody, ScVal};
-use soroban_sdk::{Address, String};
+use soroban_sdk::xdr::{ContractEventBody, ScAddress, ScVal};
+use soroban_sdk::{Address, Env, String};
 
 use super::common::*;
 use crate::admin::TIMELOCK_DURATION;
@@ -992,4 +992,80 @@ fn cancel_loan_proposal_by_non_proposer_rejected() {
 
     let res = s.client.try_cancel_loan_proposal(&other, &pid);
     assert_eq!(res, Err(Ok(Error::NotBorrower)));
+}
+
+// ===========================================================================
+// Issue #343: loan lifecycle events carry the loan's asset as their last field
+// ===========================================================================
+
+/// Data tuple of the most recent event whose first topic is `name`.
+fn last_event_data(env: &Env, name: &str) -> ScVal {
+    let all = env.events().all();
+    let event = all
+        .events()
+        .iter()
+        .rev()
+        .find(|e| {
+            let ContractEventBody::V0(body) = &e.body;
+            matches!(body.topics.first(), Some(ScVal::Symbol(sym)) if sym.0.to_utf8_string_lossy() == name)
+        })
+        .unwrap_or_else(|| panic!("{name} event not found"));
+    let ContractEventBody::V0(body) = &event.body;
+    body.data.clone()
+}
+
+/// Asserts `data` is a tuple of `len` fields whose last field is `asset`.
+fn assert_tuple_ends_with_asset(data: &ScVal, len: usize, asset: &Address) {
+    let ScVal::Vec(Some(items)) = data else {
+        panic!("expected a tuple, got {data:?}");
+    };
+    assert_eq!(items.len(), len);
+    assert_eq!(items[len - 1], ScVal::Address(ScAddress::from(asset)));
+}
+
+#[test]
+fn base_loan_lifecycle_events_carry_asset() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+    let base = s.client.get_token();
+
+    let pid = s.client.request_loan(&borrower, &1_000, &None);
+    assert_tuple_ends_with_asset(&last_event_data(&s.env, "loan_req"), 5, &base);
+
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid, &true);
+    assert_tuple_ends_with_asset(&last_event_data(&s.env, "loan_appr"), 5, &base);
+
+    s.client.repay_loan(&borrower, &pid);
+    assert_tuple_ends_with_asset(&last_event_data(&s.env, "loan_rpy"), 4, &base);
+    assert_tuple_ends_with_asset(&last_event_data(&s.env, "interest"), 3, &base);
+}
+
+#[test]
+fn second_asset_loan_events_carry_that_asset() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+    let asset = whitelist_second_asset(&s, 10_000).address;
+
+    let pid = s
+        .client
+        .request_loan_in_asset(&borrower, &1_000, &asset, &None);
+    assert_tuple_ends_with_asset(&last_event_data(&s.env, "loan_req"), 5, &asset);
+
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid, &true);
+    assert_tuple_ends_with_asset(&last_event_data(&s.env, "loan_appr"), 5, &asset);
+
+    // Interest in a non-base asset stays in the treasury, so repaying it emits
+    // `loan_rpy` tagged with that asset and no `interest` event.
+    mint_asset(&s, &asset, &borrower, 1_000);
+    s.client.repay_loan_in_asset(&borrower, &pid, &asset);
+    assert_tuple_ends_with_asset(&last_event_data(&s.env, "loan_rpy"), 4, &asset);
+    assert!(!emitted(&s.env, "interest"));
 }

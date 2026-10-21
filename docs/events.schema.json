@@ -312,7 +312,26 @@
     },
     "loan_req": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "borrower": {
+          "type": "string",
+          "format": "address"
+        },
+        "amount": {
+          "type": "integer"
+        },
+        "total_repayment": {
+          "type": "integer"
+        },
+        "asset": {
+          "type": "string",
+          "format": "address"
+        }
+      },
+      "required": ["id", "borrower", "amount", "total_repayment", "asset"],
       "additionalProperties": false
     },
     "loan_edit": {
@@ -362,7 +381,26 @@
     },
     "loan_appr": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "borrower": {
+          "type": "string",
+          "format": "address"
+        },
+        "amount": {
+          "type": "integer"
+        },
+        "due_time": {
+          "type": "integer"
+        },
+        "asset": {
+          "type": "string",
+          "format": "address"
+        }
+      },
+      "required": ["id", "borrower", "amount", "due_time", "asset"],
       "additionalProperties": false
     },
     "loan_rpy": {
@@ -377,9 +415,13 @@
         },
         "remaining": {
           "type": "integer"
+        },
+        "asset": {
+          "type": "string",
+          "format": "address"
         }
       },
-      "required": ["loan_id", "borrower", "remaining"],
+      "required": ["loan_id", "borrower", "remaining", "asset"],
       "additionalProperties": false
     },
     "loan_exp": {
@@ -399,10 +441,14 @@
           "type": "integer"
         },
         "active": {
-          "type": "boolean"
+          "type": "integer"
+        },
+        "asset": {
+          "type": "string",
+          "format": "address"
         }
       },
-      "required": ["interest", "active"],
+      "required": ["interest", "active", "asset"],
       "additionalProperties": false
     },
     "tre_asset": {
