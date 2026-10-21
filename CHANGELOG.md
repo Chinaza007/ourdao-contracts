@@ -20,11 +20,18 @@ All notable changes to `ourdao-contracts` are documented here. The format follow
 - `bench-cost.sh` now runs a real `test_budget_scaling` benchmark that also covers `request_loan_in_asset`, `repay_loan_in_asset` and `propose_withdrawal_in_asset` (#354).
 
 ### Fixed
+- Fixed `vote_batch` to authenticate the voter once for the batch instead of re-authorizing per proposal vote, preventing auth collisions (#308).
 - Bind private vote commitments to voter and proposal to prevent copied-hash reveals (#324).
 - Enforce a three-open-proposal quota per member across treasury and loan proposals (#326).
 - Prevent unstaking during open loan/treasury ballots and private commitments (#330).
 - Apply treasury-favouring rounding for debt and interest calculations; document every division (#325).
 - Added regression coverage that `reveal_vote` removes the stored commitment (#356).
+
+### Added
+- Tests for `vote_batch` covering empty batches, valid batches, mixed valid/invalid proposal IDs, and duplicate IDs with documented atomic rollback (#308).
+- Tests for `get_member_loan_stats` asserting counts across repay, partial repay, default, and proposal rejection (#306).
+- Tests asserting persistent storage TTL is extended for `Member`, `Loan`, `Stake`, `Commit`, `Doc`, and `Name` keys (#305).
+- Tests for delegation covering weight transitions on re-delegation, A→B→A deadlocks, proposal voting with delegated weight, and filed bug #409 (#307).
 
 ### Added
 - `make costs` and `tests/costs.rs`: per-entrypoint CPU, memory, ledger I/O, event size and fee estimates measured against the optimized wasm, plus how votes and `exit_dao` scale with membership; `make size` reports raw and optimized wasm size (#357, #358).
