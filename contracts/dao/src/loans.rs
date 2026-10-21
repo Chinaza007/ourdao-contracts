@@ -293,6 +293,9 @@ pub fn vote_on_loan_proposal(
     if now >= proposal.editing_period_end + proposal.voting_period {
         return Err(Error::VotingEnded);
     }
+    if voter == proposal.borrower {
+        return Err(Error::BorrowerCannotVote);
+    }
     if storage::has_loan_voted(env, proposal_id, &voter) {
         return Err(Error::AlreadyVoted);
     }

@@ -527,16 +527,16 @@ fn loan_proposal_uses_dynamic_quorum_threshold() {
 
 #[test]
 fn loan_proposal_quorum_higher_threshold_requires_more_votes() {
-    // 4 members. Threshold set to 5100 (3 votes).
-    // If policy has quorum_bps = 10_000 (needs ceil(4 * 100%) = 4 votes).
-    let s = setup(4);
+    // 5 members. Threshold set to 8000 (needs ceil(5 * 80%) = 4 votes).
+    let s = setup(5);
     let borrower = s.members.get(0).unwrap();
     let v1 = s.members.get(1).unwrap();
     let v2 = s.members.get(2).unwrap();
     let v3 = s.members.get(3).unwrap();
+    let v4 = s.members.get(4).unwrap();
 
     let mut high_quorum_policy = policy();
-    high_quorum_policy.quorum_bps = 10_000; // 100% => all 4 votes required
+    high_quorum_policy.quorum_bps = 8_000; // 80% => 4 votes required
 
     s.client
         .propose_policy_update(&s.admin, &high_quorum_policy);
@@ -546,7 +546,6 @@ fn loan_proposal_quorum_higher_threshold_requires_more_votes() {
     let pid = s.client.request_loan(&borrower, &500, &None);
     advance(&s.env, EDITING + 1);
 
-    // 2 votes was enough with 51% (for 3 members), but for 4 members with 100% quorum, 2 votes is still pending.
     s.client.vote_on_loan_proposal(&v1, &pid, &true);
     s.client.vote_on_loan_proposal(&v2, &pid, &true);
     assert_eq!(
@@ -560,12 +559,26 @@ fn loan_proposal_quorum_higher_threshold_requires_more_votes() {
         ProposalStatus::Pending
     );
 
-    // Borrower votes yes (4th vote) => 4/4 approved!
-    s.client.vote_on_loan_proposal(&borrower, &pid, &true);
+    // Borrower cannot vote on their own loan proposal
+    let err = s.client.try_vote_on_loan_proposal(&borrower, &pid, &true);
+    assert_eq!(err, Err(Ok(Error::BorrowerCannotVote)));
+
+    // 4th non-borrower voter votes yes => 4/4 required approved!
+    s.client.vote_on_loan_proposal(&v4, &pid, &true);
     assert_eq!(
         s.client.get_loan_proposal(&pid).unwrap().status,
         ProposalStatus::Approved
     );
+}
+
+#[test]
+fn borrower_cannot_vote_on_own_loan_proposal() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + 1);
+    let res = s.client.try_vote_on_loan_proposal(&borrower, &pid, &true);
+    assert_eq!(res, Err(Ok(Error::BorrowerCannotVote)));
 }
 
 #[test]
