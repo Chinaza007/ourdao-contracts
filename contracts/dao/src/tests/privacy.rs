@@ -26,11 +26,14 @@ fn commit_reveal_private_treasury_vote() {
 
     let salt1 = BytesN::from_array(&s.env, &[7u8; 32]);
     let salt2 = BytesN::from_array(&s.env, &[9u8; 32]);
-    let c1 = compute_commitment(&s.env, true, &salt1);
-    let c2 = compute_commitment(&s.env, true, &salt2);
+    let c1 = compute_commitment(&s.env, &v1, pid, true, &salt1);
+    let c2 = compute_commitment(&s.env, &v2, pid, true, &salt2);
 
     s.client.commit_treasury_vote(&v1, &pid, &c1);
     s.client.commit_treasury_vote(&v2, &pid, &c2);
+
+    // Reveals are valid only after the commitment phase.
+    advance(&s.env, VOTING_PERIOD + 1);
 
     // A reveal that doesn't match the commitment is rejected.
     let bad = s.client.try_reveal_treasury_vote(&v1, &pid, &false, &salt1);
@@ -62,8 +65,8 @@ fn commit_vote_cannot_be_overwritten() {
 
     let salt = BytesN::from_array(&s.env, &[7u8; 32]);
     let other = BytesN::from_array(&s.env, &[9u8; 32]);
-    let c1 = compute_commitment(&s.env, true, &salt);
-    let c2 = compute_commitment(&s.env, false, &other);
+    let c1 = compute_commitment(&s.env, &voter, pid, true, &salt);
+    let c2 = compute_commitment(&s.env, &voter, pid, false, &other);
 
     s.client.commit_treasury_vote(&voter, &pid, &c1);
     let again = s.client.try_commit_treasury_vote(&voter, &pid, &c2);
@@ -91,7 +94,7 @@ fn has_voted_treasury_commit_reveal() {
 
     // After commit: voted (commitment counts as a vote for dedup).
     let salt = BytesN::from_array(&s.env, &[1u8; 32]);
-    let commitment = compute_commitment(&s.env, true, &salt);
+    let commitment = compute_commitment(&s.env, &v1, pid, true, &salt);
     s.client.commit_treasury_vote(&v1, &pid, &commitment);
     assert!(s.client.has_voted(&ProposalKind::Treasury, &pid, &v1));
 }
@@ -113,7 +116,7 @@ fn reveal_with_correct_salt_tallies_vote() {
         .propose_treasury_withdrawal(&proposer, &300, &dest, &reason, &true);
 
     let salt = BytesN::from_array(&s.env, &[42u8; 32]);
-    let commitment = compute_commitment(&s.env, true, &salt);
+    let commitment = compute_commitment(&s.env, &voter, pid, true, &salt);
     s.client.commit_treasury_vote(&voter, &pid, &commitment);
 
     advance(&s.env, VOTING_PERIOD + 1);
@@ -137,7 +140,7 @@ fn reveal_with_mismatched_salt_returns_commitment_mismatch() {
 
     let real_salt = BytesN::from_array(&s.env, &[1u8; 32]);
     let wrong_salt = BytesN::from_array(&s.env, &[2u8; 32]);
-    let commitment = compute_commitment(&s.env, true, &real_salt);
+    let commitment = compute_commitment(&s.env, &voter, pid, true, &real_salt);
     s.client.commit_treasury_vote(&voter, &pid, &commitment);
 
     advance(&s.env, VOTING_PERIOD + 1);
@@ -161,7 +164,7 @@ fn reveal_with_wrong_support_returns_commitment_mismatch() {
         .propose_treasury_withdrawal(&proposer, &300, &dest, &reason, &true);
 
     let salt = BytesN::from_array(&s.env, &[7u8; 32]);
-    let commitment = compute_commitment(&s.env, true, &salt);
+    let commitment = compute_commitment(&s.env, &voter, pid, true, &salt);
     s.client.commit_treasury_vote(&voter, &pid, &commitment);
 
     advance(&s.env, VOTING_PERIOD + 1);
@@ -173,30 +176,42 @@ fn reveal_with_wrong_support_returns_commitment_mismatch() {
     assert_eq!(res, Err(Ok(Error::CommitmentMismatch)));
 }
 
-// Known-answer vectors pin the commitment preimage, `[support] ++ salt`, that
-// off-chain clients must reproduce. Computed independently with Python:
-// hashlib.sha256(bytes([support]) + salt).hexdigest()
 #[test]
-fn commitment_matches_known_answer_vectors() {
+fn commitments_bind_voter_and_proposal() {
     let env = soroban_sdk::Env::default();
-    let cases: [(bool, [u8; 32], &str); 2] = [
-        (
-            true,
-            [7u8; 32],
-            "d3907c0247e7e98b72338a00d87244248df71eb313589da290d45adfba44e6d2",
-        ),
-        (
-            false,
-            core::array::from_fn(|i| i as u8),
-            "699cacdb4c39d8e0bb1223352765a7f7acdc51dec6694f7b54c3d0a47f0cc409",
-        ),
-    ];
-    for (support, salt, hex) in cases {
-        let mut expected = [0u8; 32];
-        for (i, byte) in expected.iter_mut().enumerate() {
-            *byte = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap();
-        }
-        let got = compute_commitment(&env, support, &BytesN::from_array(&env, &salt));
-        assert_eq!(got.to_array(), expected);
-    }
+    let voter = Address::generate(&env);
+    let copier = Address::generate(&env);
+    let salt = BytesN::from_array(&env, &[7u8; 32]);
+    let c = compute_commitment(&env, &voter, 3, true, &salt);
+    assert_eq!(c, compute_commitment(&env, &voter, 3, true, &salt));
+    assert_ne!(c, compute_commitment(&env, &copier, 3, true, &salt));
+    assert_ne!(c, compute_commitment(&env, &voter, 4, true, &salt));
+    assert_ne!(c, compute_commitment(&env, &voter, 3, false, &salt));
+}
+
+#[test]
+fn copied_commitment_cannot_be_revealed_by_another_voter() {
+    let s = setup(3);
+    let proposer = s.members.get(0).unwrap();
+    let first = s.members.get(1).unwrap();
+    let copier = s.members.get(2).unwrap();
+    let destination = Address::generate(&s.env);
+    let pid = s.client.propose_treasury_withdrawal(
+        &proposer,
+        &300,
+        &destination,
+        &String::from_str(&s.env, "private"),
+        &true,
+    );
+    let salt = BytesN::from_array(&s.env, &[13u8; 32]);
+    let commitment = compute_commitment(&s.env, &first, pid, true, &salt);
+    s.client.commit_treasury_vote(&first, &pid, &commitment);
+    s.client.commit_treasury_vote(&copier, &pid, &commitment);
+    advance(&s.env, VOTING_PERIOD + 1);
+    assert_eq!(
+        s.client
+            .try_reveal_treasury_vote(&copier, &pid, &true, &salt),
+        Err(Ok(Error::CommitmentMismatch)),
+    );
+    s.client.reveal_treasury_vote(&first, &pid, &true, &salt);
 }

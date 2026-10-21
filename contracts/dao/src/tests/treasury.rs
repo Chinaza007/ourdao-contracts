@@ -300,3 +300,27 @@ fn tally_persists_status_and_votes_whether_executed_or_waiting() {
     assert_eq!((waiting.for_votes, waiting.votes_cast), (3, 3));
     assert_eq!(s.token.balance(&dest), 2_000);
 }
+
+#[test]
+fn proposer_cannot_exceed_three_concurrent_open_proposals() {
+    let s = setup(3);
+    let proposer = s.members.get(0).unwrap();
+    let dest = Address::generate(&s.env);
+    let reason = soroban_sdk::String::from_str(&s.env, "limited proposal");
+    let first = s
+        .client
+        .propose_treasury_withdrawal(&proposer, &100, &dest, &reason, &false);
+    for _ in 1..3 {
+        s.client
+            .propose_treasury_withdrawal(&proposer, &100, &dest, &reason, &false);
+    }
+    assert_eq!(
+        s.client
+            .try_propose_treasury_withdrawal(&proposer, &100, &dest, &reason, &false),
+        Err(Ok(Error::TooManyOpenProposals)),
+    );
+    // Cancelling one proposal releases a slot, without requiring an admin sweep.
+    s.client.cancel_treasury_proposal(&proposer, &first);
+    s.client
+        .propose_treasury_withdrawal(&proposer, &100, &dest, &reason, &false);
+}

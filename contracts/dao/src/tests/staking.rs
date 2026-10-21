@@ -507,3 +507,63 @@ fn unstake_allowed_after_proposal_expired() {
     s.client.unstake(&borrower, &200);
     assert_eq!(s.client.get_stake(&borrower), 0);
 }
+
+#[test]
+fn unstaking_during_open_loan_ballot_is_rejected() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let voter = s.members.get(1).unwrap();
+    s.client.stake(&voter, &200);
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&voter, &pid, &false);
+    advance(&s.env, VOTING_PERIOD / 2);
+    assert_eq!(
+        s.client.try_unstake(&voter, &200),
+        Err(Ok(Error::HasActiveLoan))
+    );
+}
+
+#[test]
+fn unstaking_during_open_treasury_ballot_is_rejected() {
+    let s = setup(4);
+    let proposer = s.members.get(0).unwrap();
+    let voter = s.members.get(1).unwrap();
+    s.client.stake(&voter, &200);
+    let pid = s.client.propose_treasury_withdrawal(
+        &proposer,
+        &100,
+        &Address::generate(&s.env),
+        &soroban_sdk::String::from_str(&s.env, "vote"),
+        &false,
+    );
+    s.client.vote_on_treasury_proposal(&voter, &pid, &false);
+    advance(&s.env, VOTING_PERIOD / 2);
+    assert_eq!(
+        s.client.try_unstake(&voter, &200),
+        Err(Ok(Error::HasActiveLoan))
+    );
+}
+
+#[test]
+fn unstaking_during_unrevealed_private_commitment_is_rejected() {
+    let s = setup(3);
+    let proposer = s.members.get(0).unwrap();
+    let voter = s.members.get(1).unwrap();
+    s.client.stake(&voter, &200);
+    let pid = s.client.propose_treasury_withdrawal(
+        &proposer,
+        &100,
+        &Address::generate(&s.env),
+        &soroban_sdk::String::from_str(&s.env, "private"),
+        &true,
+    );
+    let salt = soroban_sdk::BytesN::from_array(&s.env, &[1u8; 32]);
+    let hash = crate::privacy::compute_commitment(&s.env, &voter, pid, true, &salt);
+    s.client.commit_treasury_vote(&voter, &pid, &hash);
+    advance(&s.env, VOTING_PERIOD / 2);
+    assert_eq!(
+        s.client.try_unstake(&voter, &200),
+        Err(Ok(Error::HasActiveLoan))
+    );
+}

@@ -170,7 +170,7 @@ The *k*-th bonus vote starts at `k² × 100` staked tokens, so the thresholds ar
 
 | Method | Description |
 |---|---|
-| `commit_treasury_vote(voter, proposal_id, commitment)` | `commitment = sha256(support_byte ++ salt)`. |
+| `commit_treasury_vote(voter, proposal_id, commitment)` | `commitment = sha256(XDR(voter) ++ proposal_id_be ++ support_byte ++ salt)`. |
 | `reveal_treasury_vote(voter, proposal_id, support, salt)` | Verifies the commitment, then tallies through the shared path. |
 
 **Content-hash documents**

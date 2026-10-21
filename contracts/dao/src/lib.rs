@@ -31,7 +31,7 @@ mod tests;
 mod bench;
 
 use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, Vec};
-use types::{SeedDocEntry, SeedNameEntry, SeedStakeEntry, SeedYieldEntry};
+use types::{AssetBalance, DaoSummary, SeedDocEntry, SeedNameEntry, SeedStakeEntry, SeedYieldEntry};
 
 pub use error::Error;
 pub use storage::ProposalKind;

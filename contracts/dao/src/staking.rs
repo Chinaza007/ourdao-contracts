@@ -36,8 +36,10 @@ pub fn stake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
     storage::extend_instance(env);
 
     let voting_weight = util::voting_weight(env, &member);
-    env.events()
-        .publish((symbol_short!("staked"),), (member, amount, new_stake, voting_weight));
+    env.events().publish(
+        (symbol_short!("staked"),),
+        (member, amount, new_stake, voting_weight),
+    );
     Ok(())
 }
 
@@ -77,6 +79,39 @@ pub fn unstake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
             if p.borrower == member
                 && (p.phase == ProposalPhase::Editing || p.phase == ProposalPhase::Voting)
                 && p.status == ProposalStatus::Pending
+                && env.ledger().timestamp() <= p.editing_period_end.saturating_add(p.voting_period)
+            {
+                return Err(Error::HasActiveLoan);
+            }
+        }
+    }
+
+    // A vote cast with stake-derived weight must remain backed until that
+    // proposal closes. This includes loan ballots, treasury ballots, and
+    // unrevealed private commitments, not just the borrower's own request.
+    let treasury_count = storage::get_proposal_count(env, storage::DataKey::NextTreasuryId);
+    for id in 0..treasury_count {
+        if let Some(p) = storage::get_treasury_proposal(env, id) {
+            let voting_end =
+                p.created_at
+                    .saturating_add(
+                        p.voting_period
+                            .saturating_mul(if p.private { 2 } else { 1 }),
+                    );
+            if p.status == ProposalStatus::Pending
+                && env.ledger().timestamp() <= voting_end
+                && (storage::has_treasury_voted(env, id, &member)
+                    || storage::get_commit(env, id, &member).is_some())
+            {
+                return Err(Error::HasActiveLoan);
+            }
+        }
+    }
+    for id in 0..proposal_count {
+        if let Some(p) = storage::get_loan_proposal(env, id) {
+            if p.status == ProposalStatus::Pending
+                && env.ledger().timestamp() <= p.editing_period_end.saturating_add(p.voting_period)
+                && storage::has_loan_voted(env, id, &member)
             {
                 return Err(Error::HasActiveLoan);
             }
@@ -91,7 +126,9 @@ pub fn unstake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
     storage::extend_instance(env);
 
     let voting_weight = util::voting_weight(env, &member);
-    env.events()
-        .publish((symbol_short!("unstaked"),), (member, amount, new_stake, voting_weight));
+    env.events().publish(
+        (symbol_short!("unstaked"),),
+        (member, amount, new_stake, voting_weight),
+    );
     Ok(())
 }

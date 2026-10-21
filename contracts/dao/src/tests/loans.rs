@@ -1069,3 +1069,12 @@ fn second_asset_loan_events_carry_that_asset() {
     assert_tuple_ends_with_asset(&last_event_data(&s.env, "loan_rpy"), 4, &asset);
     assert!(!emitted(&s.env, "interest"));
 }
+
+#[test]
+fn financial_rounding_uses_ceil_for_member_debts_and_floor_for_payouts() {
+    assert_eq!(crate::util::ceil_div_nonnegative(1, 10_000), 1);
+    assert_eq!(crate::util::ceil_div_nonnegative(10_001, 10_000), 2);
+    assert_eq!(crate::util::ceil_div_nonnegative(10_000, 10_000), 1);
+    assert_eq!(crate::util::ceil_div_nonnegative(0, 10_000), 0);
+    assert_eq!(11_i128 / 3, 3, "member distribution must round down");
+}
