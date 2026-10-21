@@ -1,4 +1,4 @@
-use soroban_sdk::{symbol_short, Address, Env, String};
+use soroban_sdk::{symbol_short, Address, Env, String, Vec};
 
 use crate::error::Error;
 use crate::storage;
@@ -276,7 +276,31 @@ pub fn vote_on_loan_proposal(
     util::require_initialized(env)?;
     util::require_not_paused(env)?;
     util::require_active_member(env, &voter)?;
+    vote_on_loan_proposal_internal(env, &voter, proposal_id, support)
+}
 
+pub fn vote_batch(
+    env: &Env,
+    voter: Address,
+    votes: Vec<crate::types::ProposalVote>,
+) -> Result<(), Error> {
+    util::require_initialized(env)?;
+    util::require_not_paused(env)?;
+    util::require_active_member(env, &voter)?;
+
+    for v in votes.iter() {
+        vote_on_loan_proposal_internal(env, &voter, v.proposal_id, v.vote)?;
+    }
+    Ok(())
+}
+
+#[allow(deprecated)]
+fn vote_on_loan_proposal_internal(
+    env: &Env,
+    voter: &Address,
+    proposal_id: u32,
+    support: bool,
+) -> Result<(), Error> {
     let mut proposal = storage::get_loan_proposal(env, proposal_id)
         .ok_or(Error::ProposalNotFound)
         .map(|p| refresh_phase(env, p))?;
@@ -293,23 +317,25 @@ pub fn vote_on_loan_proposal(
     if now >= proposal.editing_period_end + proposal.voting_period {
         return Err(Error::VotingEnded);
     }
-    if voter == proposal.borrower {
+    if *voter == proposal.borrower {
         return Err(Error::BorrowerCannotVote);
     }
-    if storage::has_loan_voted(env, proposal_id, &voter) {
+    if storage::has_loan_voted(env, proposal_id, voter) {
         return Err(Error::AlreadyVoted);
     }
 
-    let weight = util::voting_weight(env, &voter);
+    let weight = util::voting_weight(env, voter);
     if support {
         proposal.for_votes += weight;
     } else {
         proposal.against_votes += weight;
     }
     proposal.votes_cast += 1;
-    storage::set_loan_voted(env, proposal_id, &voter);
-    env.events()
-        .publish((symbol_short!("loan_vote"),), (proposal_id, voter, support));
+    storage::set_loan_voted(env, proposal_id, voter);
+    env.events().publish(
+        (symbol_short!("loan_vote"),),
+        (proposal_id, voter.clone(), support),
+    );
 
     // Read the policy and the active-member count once per call (#355).
     let policy = storage::get_policy(env);

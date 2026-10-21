@@ -7,7 +7,7 @@ use soroban_sdk::{Address, Env, String};
 use super::common::*;
 use crate::admin::TIMELOCK_DURATION;
 use crate::storage::ProposalKind;
-use crate::types::{LoanStatus, ProposalPhase, ProposalStatus};
+use crate::types::{LoanStatus, ProposalPhase, ProposalStatus, ProposalVote};
 use crate::Error;
 
 #[test]
@@ -1091,3 +1091,139 @@ fn financial_rounding_uses_ceil_for_member_debts_and_floor_for_payouts() {
     assert_eq!(crate::util::ceil_div_nonnegative(0, 10_000), 0);
     assert_eq!(11_i128 / 3, 3, "member distribution must round down");
 }
+
+// ==================== issue #308: tests for vote_batch ====================
+
+/// Tests that an empty batch vote call succeeds as a no-op.
+#[test]
+fn vote_batch_empty_batch_succeeds() {
+    let s = setup(2);
+    let voter = s.members.get(0).unwrap();
+    let empty_votes = soroban_sdk::vec![&s.env];
+    assert!(s.client.try_vote_batch(&voter, &empty_votes).is_ok());
+}
+
+/// Tests that a batch of valid votes for distinct proposals records all votes.
+#[test]
+fn vote_batch_valid_batch_records_all_votes() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+
+    let pid1 = s.client.request_loan(&borrower, &1_000, &None);
+    let pid2 = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + 1);
+
+    let votes = soroban_sdk::vec![
+        &s.env,
+        ProposalVote {
+            proposal_id: pid1,
+            vote: true,
+        },
+        ProposalVote {
+            proposal_id: pid2,
+            vote: false,
+        },
+    ];
+
+    s.client.vote_batch(&v1, &votes);
+
+    let prop1 = s.client.get_loan_proposal(&pid1).unwrap();
+    assert_eq!(prop1.for_votes, 1);
+    assert_eq!(prop1.against_votes, 0);
+
+    let prop2 = s.client.get_loan_proposal(&pid2).unwrap();
+    assert_eq!(prop2.for_votes, 0);
+    assert_eq!(prop2.against_votes, 1);
+}
+
+/// Tests mixed valid and invalid proposal IDs in a single batch.
+///
+/// Behaviour on partial failure:
+/// Soroban executes contract invocations within an atomic transaction. Because
+/// `vote_batch` processes votes sequentially with `?`, encountering an invalid
+/// proposal ID (e.g. non-existent proposal) returns an error and aborts execution,
+/// causing the host to roll back any state modifications from prior votes in the batch.
+#[test]
+fn vote_batch_mixed_valid_invalid_rolls_back_atomically() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+
+    let pid1 = s.client.request_loan(&borrower, &1_000, &None);
+    advance(&s.env, EDITING + 1);
+
+    let invalid_id = 99_999u32;
+    let votes = soroban_sdk::vec![
+        &s.env,
+        ProposalVote {
+            proposal_id: pid1,
+            vote: true,
+        },
+        ProposalVote {
+            proposal_id: invalid_id,
+            vote: true,
+        },
+    ];
+
+    let res = s.client.try_vote_batch(&v1, &votes);
+    assert_eq!(res, Err(Ok(Error::ProposalNotFound)));
+
+    // Ensure earlier vote on pid1 was rolled back and not committed.
+    let prop1 = s.client.get_loan_proposal(&pid1).unwrap();
+    assert_eq!(prop1.for_votes, 0);
+    assert_eq!(prop1.votes_cast, 0);
+    let has_voted = s.env.as_contract(&s.client.address, || {
+        crate::storage::has_loan_voted(&s.env, pid1, &v1)
+    });
+    assert!(
+        !has_voted,
+        "partial failure must roll back earlier votes in batch"
+    );
+}
+
+/// Tests that duplicate proposal IDs in one batch trigger an error and roll back.
+///
+/// Behaviour on partial failure:
+/// When a batch contains duplicate votes for the same proposal, the first vote
+/// succeeds in memory during loop execution, but the second vote encounters
+/// `storage::has_loan_voted` and returns `Error::AlreadyVoted`. The error is propagated
+/// via `?`, rolling back the entire invocation so that no vote from the batch remains recorded.
+#[test]
+fn vote_batch_duplicate_ids_in_one_batch_fails_and_rolls_back() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+
+    let pid1 = s.client.request_loan(&borrower, &1_000, &None);
+    advance(&s.env, EDITING + 1);
+
+    let votes = soroban_sdk::vec![
+        &s.env,
+        ProposalVote {
+            proposal_id: pid1,
+            vote: true,
+        },
+        ProposalVote {
+            proposal_id: pid1,
+            vote: true,
+        },
+    ];
+
+    let res = s.client.try_vote_batch(&v1, &votes);
+    assert_eq!(res, Err(Ok(Error::AlreadyVoted)));
+
+    // Verify atomic rollback: pid1 must have 0 votes recorded.
+    let prop1 = s.client.get_loan_proposal(&pid1).unwrap();
+    assert_eq!(prop1.for_votes, 0);
+    assert_eq!(prop1.votes_cast, 0);
+    let has_voted = s.env.as_contract(&s.client.address, || {
+        crate::storage::has_loan_voted(&s.env, pid1, &v1)
+    });
+    assert!(
+        !has_voted,
+        "duplicate vote in batch must roll back atomically"
+    );
+}
+
+
