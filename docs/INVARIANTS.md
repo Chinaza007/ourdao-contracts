@@ -158,3 +158,26 @@ i.e. `k` bonus votes cost `STAKE_WEIGHT_UNIT * k * k` staked tokens
 3. Untested invariants (**❌**) are the highest-priority candidates for new property
    tests — they represent the shortest path from "working code" to "a bug nobody
    noticed."
+
+---
+
+## Rounding policy (issue #325)
+
+Treasury/member accounting uses explicit directions. All amounts and
+intermediate products are non-negative at these division points.
+
+| Division site | Direction | Justification |
+| --- | --- | --- |
+| `loans.rs::quote_terms`: loan size / treasury | **Ceil** | Never understate the borrower risk tier |
+| `loans.rs::quote_terms`: rate spread / basis points | **Ceil** | Never undercharge interest rate |
+| `loans.rs::quote_terms`: principal * rate / basis points | **Ceil** | Member debt rounds up |
+| `loans.rs::request_loan_in_asset`: max available loan | **Floor** | Never authorize more treasury outflow than collateral ratio |
+| `loans.rs::repay_loan_partial`: overdue penalty / basis points | **Ceil** | Member debt rounds up |
+| `loans.rs::default_loan`: contribution slash / basis points | **Ceil** | Avoid under-penalizing default; cap at member contribution |
+| `loans.rs::distribute_interest`: interest / member count | **Floor** | Member payouts never exceed collected interest; remainder carried forward |
+| `membership.rs::calculate_exit_share`: treasury * contribution / total | **Floor** | Member payout cannot exceed treasury claim |
+| `util.rs::stake_boost`: stake / weight unit | **Floor** | Incomplete unit earns no bonus |
+| `util.rs::required_votes`: active members * threshold / 10,000 | **Ceil** | Fractional vote cannot satisfy threshold |
+
+Where `checked_mul` overflows in a loan quote, its existing fail-safe
+fallback remains. Do not replace rounding with floating-point conversions.

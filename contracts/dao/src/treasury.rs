@@ -44,6 +44,9 @@ pub fn propose_withdrawal_in_asset(
     if reason.is_empty() || reason.len() > 256 {
         return Err(Error::InvalidProposal);
     }
+    if storage::get_open_proposals(env, &proposer) >= storage::MAX_OPEN_PROPOSALS_PER_MEMBER {
+        return Err(Error::TooManyOpenProposals);
+    }
     if !storage::is_token_whitelisted(env, &asset) {
         return Err(Error::TokenNotWhitelisted);
     }

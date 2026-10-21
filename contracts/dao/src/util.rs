@@ -177,6 +177,13 @@ pub fn get_max_stake_bonus() -> i128 {
     MAX_STAKE_BONUS
 }
 
+/// Treasury-favouring ceiling division for non-negative money or rate numerators.
+/// Assumes a strictly positive denominator and non-negative numerator.
+pub fn ceil_div_nonnegative(value: i128, divisor: i128) -> i128 {
+    assert!(value >= 0 && divisor > 0);
+    value / divisor + i128::from(value % divisor != 0)
+}
+
 /// Ceil-division consensus bar over the active-member base, in basis points:
 /// `(base * threshold + BP - 1) / BP`.
 pub fn required_votes(active_members: u32, threshold_bps: u32) -> i128 {

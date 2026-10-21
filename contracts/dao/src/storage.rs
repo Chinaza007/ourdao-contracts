@@ -51,6 +51,8 @@ pub(crate) enum DataKey {
     TreasuryVoted(u32, Address),
     PendingYield(Address),
     Stake(Address),
+    /// Cached count, refreshed from live proposal state before quota checks.
+    OpenProposals(Address),
     // ---- pull-based yield accrual ----
     YieldAccumulator,
     YieldRemainder,
@@ -283,6 +285,46 @@ pub fn set_member(env: &Env, member: &Member) {
     extend_persistent(env, &key);
 }
 
+/// Bound how many unclosed proposals one member may have at a time.
+pub const MAX_OPEN_PROPOSALS_PER_MEMBER: u32 = 3;
+
+/// Refresh the member's quota from authoritative proposal states. Expired
+/// pending records do not consume quota even when no keeper has finalized them.
+pub fn get_open_proposals(env: &Env, member: &Address) -> u32 {
+    let now = env.ledger().timestamp();
+    let mut count: u32 = 0;
+    for id in 0..get_proposal_count(env, DataKey::NextProposalId) {
+        if let Some(p) = get_loan_proposal(env, id) {
+            if &p.borrower == member
+                && p.status == crate::types::ProposalStatus::Pending
+                && now <= p.editing_period_end.saturating_add(p.voting_period)
+            {
+                count = count.saturating_add(1);
+            }
+        }
+    }
+    for id in 0..get_proposal_count(env, DataKey::NextTreasuryId) {
+        if let Some(p) = get_treasury_proposal(env, id) {
+            if &p.proposer == member
+                && p.status == crate::types::ProposalStatus::Pending
+                && now
+                    <= p.created_at
+                        .saturating_add(p.voting_period.saturating_mul(if p.private {
+                            2
+                        } else {
+                            1
+                        }))
+            {
+                count = count.saturating_add(1);
+            }
+        }
+    }
+    let key = DataKey::OpenProposals(member.clone());
+    env.storage().persistent().set(&key, &count);
+    extend_persistent(env, &key);
+    count
+}
+
 pub fn get_loan_proposal(env: &Env, id: u32) -> Option<LoanProposal> {
     let key = DataKey::LoanProposal(id);
     let p = env.storage().persistent().get(&key);
@@ -296,6 +338,7 @@ pub fn set_loan_proposal(env: &Env, p: &LoanProposal) {
     let key = DataKey::LoanProposal(p.id);
     env.storage().persistent().set(&key, p);
     extend_persistent(env, &key);
+    get_open_proposals(env, &p.borrower);
 }
 
 pub fn get_loan(env: &Env, id: u32) -> Option<Loan> {
@@ -326,6 +369,7 @@ pub fn set_treasury_proposal(env: &Env, p: &TreasuryProposal) {
     let key = DataKey::TreasuryProposal(p.id);
     env.storage().persistent().set(&key, p);
     extend_persistent(env, &key);
+    get_open_proposals(env, &p.proposer);
 }
 
 pub fn has_loan_voted(env: &Env, id: u32, voter: &Address) -> bool {

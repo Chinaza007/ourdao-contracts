@@ -92,4 +92,6 @@ pub enum Error {
     SeedingLocked = 88,
     /// Seeding is already locked; calling `lock_seeding` again is a no-op error (#333).
     SeedingAlreadyLocked = 89,
+    /// Member already has the maximum number of simultaneously open proposals.
+    TooManyOpenProposals = 90,
 }

@@ -20,6 +20,10 @@ All notable changes to `ourdao-contracts` are documented here. The format follow
 - `bench-cost.sh` now runs a real `test_budget_scaling` benchmark that also covers `request_loan_in_asset`, `repay_loan_in_asset` and `propose_withdrawal_in_asset` (#354).
 
 ### Fixed
+- Bind private vote commitments to voter and proposal to prevent copied-hash reveals (#324).
+- Enforce a three-open-proposal quota per member across treasury and loan proposals (#326).
+- Prevent unstaking during open loan/treasury ballots and private commitments (#330).
+- Apply treasury-favouring rounding for debt and interest calculations; document every division (#325).
 - Added regression coverage that `reveal_vote` removes the stored commitment (#356).
 
 ### Added
