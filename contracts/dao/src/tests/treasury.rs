@@ -331,8 +331,8 @@ fn propose_withdrawal_rejects_contract_destination() {
     let proposer = s.members.get(0).unwrap();
     let contract_dest = s.client.address.clone();
     let reason = soroban_sdk::String::from_str(&s.env, "self destination");
-    let res = s
-        .client
-        .try_propose_treasury_withdrawal(&proposer, &100, &contract_dest, &reason, &false);
+    let res =
+        s.client
+            .try_propose_treasury_withdrawal(&proposer, &100, &contract_dest, &reason, &false);
     assert_eq!(res, Err(Ok(Error::InvalidProposal)));
 }

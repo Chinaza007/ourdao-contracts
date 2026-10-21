@@ -15,7 +15,9 @@ use soroban_sdk::{Env, Vec};
 
 use crate::error::Error;
 use crate::storage::{self};
-use crate::types::{Loan, Member, MemberStatus, SeedDocEntry, SeedNameEntry, SeedStakeEntry, SeedYieldEntry};
+use crate::types::{
+    Loan, Member, MemberStatus, SeedDocEntry, SeedNameEntry, SeedStakeEntry, SeedYieldEntry,
+};
 use crate::util;
 
 fn require_seeding_open(env: &Env) -> Result<(), Error> {
@@ -120,11 +122,7 @@ pub fn seed_pending_yield(
 
 /// Seeds loan records. Advances `NextProposalId` past every seeded loan id so
 /// fresh proposals never collide with seeded ones.
-pub fn seed_loans(
-    env: &Env,
-    caller: soroban_sdk::Address,
-    loans: Vec<Loan>,
-) -> Result<(), Error> {
+pub fn seed_loans(env: &Env, caller: soroban_sdk::Address, loans: Vec<Loan>) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     require_seeding_open(env)?;
     storage::extend_instance(env);
