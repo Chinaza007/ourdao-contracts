@@ -581,15 +581,14 @@ fn repay_loan_internal(
         }
     }
     storage::set_loan(env, &loan);
-    // External token interaction last; failed transfers revert the preceding state writes.
-    util::token_client_for(env, &asset).transfer(&borrower, util::contract_address(env), &amount);
-
 
     // Yield is accounted and claimed in the base token, so interest paid in
     // any other asset stays in the treasury rather than being distributed.
     if asset == storage::get_token(env) {
         distribute_interest(env, interest_component, &asset);
     }
+    // External token interaction last; failed transfers revert all accounting effects.
+    util::token_client_for(env, &asset).transfer(&borrower, util::contract_address(env), &amount);
 
     env.events().publish(
         (symbol_short!("loan_rpy"),),
