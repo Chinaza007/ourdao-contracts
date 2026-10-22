@@ -3,6 +3,23 @@
 Tracks the roadmap item "External security audit before any mainnet consideration" (#130).
 Selecting and paying a firm, and mainnet deployment, are maintainer decisions and out of scope here.
 
+## Token transfer check-effects-interactions audit (#317)
+
+Soroban invokes a token contract synchronously and rolls back the invoking transaction when an unhandled invocation fails. Nevertheless, each DAO path should validate its inputs, write its accounting effects, then call the external token contract. The table tracks every direct token-client `transfer(` in the non-test DAO source.
+
+| Function | Direction | State before transfer | State after transfer |
+| --- | --- | --- | --- |
+| `membership::register_member` | Member → DAO | Membership record, counters and yield snapshot | Event |
+| `membership::exit_dao` | DAO → member | Stake reset, member deactivation, contribution totals, yield snapshot | Event |
+| `membership::claim_rewards` | DAO → member | Yield snapshot advanced | Event |
+| `loans::disburse_approved_loan` | DAO → borrower | Loan and borrower accounting | Event |
+| `loans::repay_loan_internal` | Borrower → DAO | Repayment totals, loan/member status and yield accounting | Event |
+| `treasury::execute` | DAO → destination | Proposal status persisted as Executed | Event and idempotent status rewrite in wrapper |
+| `staking::stake` | Member → DAO | Staked balance, global total, stake time | Event |
+| `staking::unstake` | DAO → member | Staked balance, global total | Event |
+
+Any newly introduced token transfer must be added to this table. The intended rule applies to both inbound and outbound transfers; validations should finish before accounting changes and no fallible accounting writes should be left after the interaction.
+
 ## 1. Audit scope
 
 **In scope:** the single `dao` contract, `contracts/dao/src/` (non-test code, ~1,900 lines):

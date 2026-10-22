@@ -560,7 +560,6 @@ fn repay_loan_internal(
     }
 
     let asset = storage::get_loan_asset(env, loan_id);
-    util::token_client_for(env, &asset).transfer(&borrower, util::contract_address(env), &amount);
 
     // Interest-first split: how much of the loan's total interest was
     // already covered before this payment vs. after it. The difference is
@@ -588,6 +587,8 @@ fn repay_loan_internal(
     if asset == storage::get_token(env) {
         distribute_interest(env, interest_component, &asset);
     }
+    // External token interaction last; failed transfers revert all accounting effects.
+    util::token_client_for(env, &asset).transfer(&borrower, util::contract_address(env), &amount);
 
     env.events().publish(
         (symbol_short!("loan_rpy"),),

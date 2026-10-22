@@ -267,6 +267,30 @@ fn pause_blocks_all_mutating_entrypoints() {
 }
 
 #[test]
+fn only_admin_can_unpause_even_when_a_dedicated_pauser_exists() {
+    let s = setup(1);
+    let pauser = Address::generate(&s.env);
+    let outsider = Address::generate(&s.env);
+
+    s.client.set_pauser(&s.admin, &pauser);
+    s.client.pause(&pauser);
+    assert!(s.client.is_paused());
+
+    // The emergency pauser may stop the DAO but must not be able to resume it.
+    assert_eq!(s.client.try_unpause(&pauser), Err(Ok(Error::NotAdmin)));
+    assert!(s.client.is_paused(), "unauthorised unpause must not change state");
+
+    // An unrelated address must likewise be rejected without clearing the pause.
+    assert_eq!(s.client.try_unpause(&outsider), Err(Ok(Error::NotAdmin)));
+    assert!(s.client.is_paused());
+
+    // Only the authenticated admin may resume normal operation.
+    s.client.unpause(&s.admin);
+    assert!(!s.client.is_paused());
+    assert_eq!(s.client.try_unpause(&s.admin), Err(Ok(Error::NotPaused)));
+}
+
+#[test]
 fn only_admin_governs() {
     let s = setup(1);
     let intruder = s.members.get(0).unwrap();

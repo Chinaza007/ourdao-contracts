@@ -195,6 +195,8 @@ fn execute(env: &Env, proposal: &mut TreasuryProposal) -> Result<(), Error> {
         return Err(Error::InsufficientTreasury);
     }
     proposal.status = ProposalStatus::Executed;
+    // Commit the effect before interacting with the external asset contract.
+    storage::set_treasury_proposal(env, proposal);
     util::token_client_for(env, &asset).transfer(
         &util::contract_address(env),
         &proposal.destination,
