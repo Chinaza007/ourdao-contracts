@@ -20,6 +20,7 @@ All notable changes to `ourdao-contracts` are documented here. The format follow
 - `bench-cost.sh` now runs a real `test_budget_scaling` benchmark that also covers `request_loan_in_asset`, `repay_loan_in_asset` and `propose_withdrawal_in_asset` (#354).
 
 ### Fixed
+- Enforce and regression-test admin-only `unpause`: the dedicated pauser may pause but cannot resume the DAO (#319).
 - Fixed `vote_batch` to authenticate the voter once for the batch instead of re-authorizing per proposal vote, preventing auth collisions (#308).
 - Bind private vote commitments to voter and proposal to prevent copied-hash reveals (#324).
 - Enforce a three-open-proposal quota per member across treasury and loan proposals (#326).
