@@ -91,7 +91,6 @@ pub fn exit_dao(env: &Env, member: Address) -> Result<(), Error> {
         if contract_balance < payout {
             return Err(Error::InsufficientTreasury);
         }
-        util::token_client(env).transfer(&util::contract_address(env), &member, &payout);
     }
     if stake > 0 {
         storage::set_stake(env, &member, 0);
@@ -113,6 +112,12 @@ pub fn exit_dao(env: &Env, member: Address) -> Result<(), Error> {
         storage::get_active_contributions(env) - exiting_contribution,
     );
     extend_instance(env);
+
+    // Interact only after all membership, stake and yield effects are written.
+    // Soroban rolls back these writes if the token transfer fails.
+    if payout > 0 {
+        util::token_client(env).transfer(&util::contract_address(env), &member, &payout);
+    }
 
     env.events()
         .publish((symbol_short!("exited"),), (member, share, pending));
