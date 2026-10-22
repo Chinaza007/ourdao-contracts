@@ -22,10 +22,7 @@ pub fn stake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
         return Err(Error::InvalidAmount);
     }
 
-    util::token_client(env).transfer(&member, util::contract_address(env), &amount);
-
-    // Effects: only now that the transfer is verified do we update stake
-    // accounting.
+    // Commit stake accounting first (CEI); a failed transfer reverts these writes.
     let new_stake = storage::get_stake(env, &member) + amount;
     storage::set_stake(env, &member, new_stake);
     storage::set_total_staked(env, storage::get_total_staked(env) + amount);
@@ -36,6 +33,7 @@ pub fn stake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
     storage::extend_instance(env);
 
     let voting_weight = util::voting_weight(env, &member);
+    util::token_client(env).transfer(&member, util::contract_address(env), &amount);
     env.events().publish(
         (symbol_short!("staked"),),
         (member, amount, new_stake, voting_weight),
@@ -118,14 +116,13 @@ pub fn unstake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
         }
     }
 
-    util::token_client(env).transfer(&util::contract_address(env), &member, &amount);
-
     let new_stake = current - amount;
     storage::set_stake(env, &member, new_stake);
     storage::set_total_staked(env, storage::get_total_staked(env) - amount);
     storage::extend_instance(env);
 
     let voting_weight = util::voting_weight(env, &member);
+    util::token_client(env).transfer(&util::contract_address(env), &member, &amount);
     env.events().publish(
         (symbol_short!("unstaked"),),
         (member, amount, new_stake, voting_weight),
