@@ -560,7 +560,6 @@ fn repay_loan_internal(
     }
 
     let asset = storage::get_loan_asset(env, loan_id);
-    util::token_client_for(env, &asset).transfer(&borrower, util::contract_address(env), &amount);
 
     // Interest-first split: how much of the loan's total interest was
     // already covered before this payment vs. after it. The difference is
@@ -582,6 +581,9 @@ fn repay_loan_internal(
         }
     }
     storage::set_loan(env, &loan);
+    // External token interaction last; failed transfers revert the preceding state writes.
+    util::token_client_for(env, &asset).transfer(&borrower, util::contract_address(env), &amount);
+
 
     // Yield is accounted and claimed in the base token, so interest paid in
     // any other asset stays in the treasury rather than being distributed.
